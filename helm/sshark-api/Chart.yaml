@@ -1,0 +1,14 @@
+apiVersion: v2
+name: sshark-api
+description: SSHark API - SSH public key lookup service that fetches and caches GitHub SSH keys
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ssh
+  - github
+  - api
+  - security
+home: https://github.com/merlindorin/sshark
+maintainers:
+  - name: merlindorin

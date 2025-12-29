@@ -554,3 +554,5 @@ tool (
 	github.com/goreleaser/goreleaser/v2
 	github.com/nishanths/license/v5
 )
+
+exclude github.com/ugorji/go v1.1.4
