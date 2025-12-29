@@ -2,8 +2,8 @@ apiVersion: v2
 name: sshark-api
 description: SSHark API - SSH public key lookup service that fetches and caches GitHub SSH keys
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.0.0
+appVersion: "v0.0.1"
 keywords:
   - ssh
   - github
@@ -12,3 +12,8 @@ keywords:
 home: https://github.com/merlindorin/sshark
 maintainers:
   - name: merlindorin
+dependencies:
+  - name: redis-stack
+    version: 0.4.21
+    repository: https://redis-stack.github.io/helm-redis-stack/
+    condition: redis-stack.enabled

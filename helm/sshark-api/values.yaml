@@ -9,9 +9,15 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Redis configuration
+# Redis Stack subchart configuration
+redis-stack:
+  enabled: true
+
+# Redis connection configuration
+# When redis-stack.enabled is true, host is auto-configured to the subchart service
 redis:
-  host: "redis"
+  # Only used when redis-stack.enabled is false
+  host: ""
   port: 6379
   password: ""
   db: 0
