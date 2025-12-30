@@ -17,7 +17,6 @@ var (
 
 type Client struct {
 	rest.Requester
-	httpClient *http.Client
 }
 
 func NewClient(logger *zap.Logger, options ...do.Option) *Client {
@@ -33,7 +32,6 @@ func NewClient(logger *zap.Logger, options ...do.Option) *Client {
 		append([]do.Option{
 			do.WithJSONRequest(),
 			do.WithLogger(logger),
-			do.WithClient(cl.httpClient),
 			WithDefaultHTTPErrorCodeHandler(),
 		}, options...)...,
 	)
