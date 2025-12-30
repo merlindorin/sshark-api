@@ -13,9 +13,10 @@ import (
 	"github.com/merlindorin/sshark-api/internal/api/probe"
 	"github.com/merlindorin/sshark-api/internal/api/search"
 	"github.com/merlindorin/sshark-api/internal/api/sshkeys"
+	"github.com/merlindorin/sshark-api/internal/api/validate"
 	"github.com/merlindorin/sshark-api/internal/domain/ingester"
 	"github.com/merlindorin/sshark-api/internal/infra/github"
-	redis2 "github.com/merlindorin/sshark-api/internal/infra/github/redis"
+	githubrepository "github.com/merlindorin/sshark-api/internal/infra/github/redis"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
 
 	"github.com/gin-contrib/timeout"
@@ -81,17 +82,18 @@ func (s *Serve) Run(common *cmd.Commons) error {
 
 	cl := github.NewFetcher(logger)
 	srepo := sshkeysrepository.NewRedisRepository(rdb)
-	urepo := redis2.NewRepository(rdb)
-	service := ingester.New(urepo, srepo, cl)
+	grepo := githubrepository.NewRepository(rdb)
+	service := ingester.New(grepo, srepo, cl)
 	search.MountV1(r.Group("/api/v1/search"), logger.Named("search"), srepo, service)
 	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), srepo)
+	validate.MountV1(r.Group("/api/v1/validate"))
 
 	err := srepo.EnsureIndex(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to ensure index: %w", err)
 	}
 
-	err = urepo.EnsureIndex(context.Background())
+	err = grepo.EnsureIndex(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to ensure index: %w", err)
 	}

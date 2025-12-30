@@ -18,8 +18,8 @@ type Fetcher struct {
 	cl rest.Requester
 }
 
-func NewFetcher(logger *zap.Logger) *Fetcher {
-	return &Fetcher{cl: githubclient.NewClient(logger)}
+func NewFetcher(logger *zap.Logger, options ...do.Option) *Fetcher {
+	return &Fetcher{cl: githubclient.NewClient(logger, options...)}
 }
 
 func (fetcher Fetcher) FetchAuthorizedKeys(

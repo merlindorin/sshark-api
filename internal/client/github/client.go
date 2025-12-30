@@ -20,12 +20,8 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(logger *zap.Logger, options ...Option) *Client {
+func NewClient(logger *zap.Logger, options ...do.Option) *Client {
 	cl := &Client{}
-
-	for _, option := range append([]Option{WithDefaultHTTPClient()}, options...) {
-		option.apply(cl)
-	}
 
 	githubURL, err := url.Parse("https://github.com")
 	if err != nil {
@@ -34,10 +30,12 @@ func NewClient(logger *zap.Logger, options ...Option) *Client {
 
 	cl.Requester = rest.NewRest(
 		githubURL,
-		do.WithJSONRequest(),
-		do.WithLogger(logger),
-		do.WithClient(cl.httpClient),
-		WithDefaultHTTPErrorCodeHandler(),
+		append([]do.Option{
+			do.WithJSONRequest(),
+			do.WithLogger(logger),
+			do.WithClient(cl.httpClient),
+			WithDefaultHTTPErrorCodeHandler(),
+		}, options...)...,
 	)
 
 	return cl
