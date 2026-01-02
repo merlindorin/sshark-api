@@ -174,8 +174,13 @@ func (r Repository) DropIndex(ctx context.Context) error {
 }
 
 // EnsureIndex creates the RediSearch index if it doesn't exist.
+// If forceReindex is true, the existing index will be dropped and recreated.
 // The index enables searching users by username (TAG field).
-func (r Repository) EnsureIndex(ctx context.Context) error {
+func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
+	if forceReindex {
+		_ = r.DropIndex(ctx) // ignore error if index doesn't exist
+	}
+
 	_, err := r.rdb.FTInfo(ctx, indexName).Result()
 	if err == nil {
 		return nil

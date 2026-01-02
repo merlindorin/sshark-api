@@ -18,7 +18,7 @@ func TestRepository_Create(t *testing.T) {
 	t.Run("schema", func(t *testing.T) {
 		_ = r.DropIndex(t.Context())
 
-		err := r.EnsureIndex(t.Context())
+		err := r.EnsureIndex(t.Context(), false)
 		if err != nil {
 			t.Fatal(err)
 		}

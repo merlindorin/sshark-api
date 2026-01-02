@@ -34,10 +34,11 @@ type Serve struct {
 
 	Timeout time.Duration `default:"5s" help:"HTTP request timeout"`
 
-	RedisHost     string `env:"REDIS_HOST" help:"Redis host" default:"localhost"`
-	RedisPort     int    `env:"REDIS_PORT" help:"Redis port" default:"6379"`
-	RedisPassword string `env:"REDIS_PASSWORD" help:"Redis password"`
-	RedisDB       int    `env:"REDIS_DB" help:"Redis db" default:"0"`
+	RedisHost         string `env:"REDIS_HOST" help:"Redis host" default:"localhost"`
+	RedisPort         int    `env:"REDIS_PORT" help:"Redis port" default:"6379"`
+	RedisPassword     string `env:"REDIS_PASSWORD" help:"Redis password"`
+	RedisDB           int    `env:"REDIS_DB" help:"Redis db" default:"0"`
+	RedisForceReindex bool   `env:"REDIS_FORCE_REINDEX" help:"Redis force reindex"`
 }
 
 func (s *Serve) Addr() string {
@@ -88,12 +89,12 @@ func (s *Serve) Run(common *cmd.Commons) error {
 	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), srepo)
 	validate.MountV1(r.Group("/api/v1/validate"))
 
-	err := srepo.EnsureIndex(context.Background())
+	err := srepo.EnsureIndex(context.Background(), s.RedisForceReindex)
 	if err != nil {
 		return fmt.Errorf("failed to ensure index: %w", err)
 	}
 
-	err = grepo.EnsureIndex(context.Background())
+	err = grepo.EnsureIndex(context.Background(), s.RedisForceReindex)
 	if err != nil {
 		return fmt.Errorf("failed to ensure index: %w", err)
 	}

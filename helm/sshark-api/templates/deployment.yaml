@@ -55,6 +55,8 @@ spec:
               value: {{ .Values.redis.port | quote }}
             - name: REDIS_DB
               value: {{ .Values.redis.db | quote }}
+            - name: REDIS_FORCE_REINDEX
+              value: {{ .Values.redis.forceReindex | quote }}
             {{- if .Values.redis.existingSecret }}
             - name: REDIS_PASSWORD
               valueFrom:

@@ -196,6 +196,7 @@ func (r Repository) DropIndex(ctx context.Context) error {
 }
 
 // EnsureIndex creates the RediSearch index if it doesn't exist.
+// If forceReindex is true, the existing index will be dropped and recreated.
 // Index fields:
 //   - id           (TAG)
 //   - username     (TEXT, weight 3.0) - for full-text search
@@ -206,7 +207,11 @@ func (r Repository) DropIndex(ctx context.Context) error {
 //   - comment      (TEXT, weight 1.0)
 //   - created_at   (TEXT, sortable)
 //   - updated_at   (TEXT, sortable)
-func (r Repository) EnsureIndex(ctx context.Context) error {
+func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
+	if forceReindex {
+		_ = r.DropIndex(ctx) // ignore error if index doesn't exist
+	}
+
 	_, err := r.rdb.FTInfo(ctx, indexName).Result()
 	if err == nil {
 		return nil
