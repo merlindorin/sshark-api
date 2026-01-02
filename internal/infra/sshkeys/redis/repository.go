@@ -202,6 +202,7 @@ func (r Repository) DropIndex(ctx context.Context) error {
 //   - username     (TAG) as username_exact - for exact match
 //   - source       (TAG) - github, gitlab, etc.
 //   - type         (TAG) - ssh-rsa, ssh-ed25519, etc.
+//   - key          (TAG) - for reverse lookup by key content
 //   - comment      (TEXT, weight 1.0)
 //   - created_at   (TEXT, sortable)
 //   - updated_at   (TEXT, sortable)
@@ -221,6 +222,7 @@ func (r Repository) EnsureIndex(ctx context.Context) error {
 		&redis.FieldSchema{FieldName: "$.username", As: "username_exact", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.source", As: "source", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.type", As: "type", FieldType: redis.SearchFieldTypeTag},
+		&redis.FieldSchema{FieldName: "$.key", As: "key", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.comment", As: "comment", FieldType: redis.SearchFieldTypeText, Weight: 1.0},
 		&redis.FieldSchema{FieldName: "$.created_at", As: "created_at", FieldType: redis.SearchFieldTypeText, Sortable: true},
 		&redis.FieldSchema{FieldName: "$.updated_at", As: "updated_at", FieldType: redis.SearchFieldTypeText, Sortable: true},
