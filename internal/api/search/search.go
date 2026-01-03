@@ -1,7 +1,6 @@
 package search
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -9,7 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/merlindorin/sshark-api/internal/api/apierrors"
 	"github.com/merlindorin/sshark-api/internal/domain/ingester"
+	"github.com/merlindorin/sshark-api/internal/domain/query"
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
 	"github.com/merlindorin/sshark-api/internal/redisquery"
 )
@@ -69,24 +70,43 @@ type SSHKeysResponse struct {
 	Limit    int              `json:"limit"`
 	Offset   int              `json:"offset"`
 	Duration time.Duration    `json:"duration"`
+	Query    string           `json:"query"`
 }
 
-func SSHKeys(logger *zap.Logger, rSSHKeys sshkeys.Repository, service *ingester.Service) gin.HandlerFunc {
+func SSHKeys(
+	logger *zap.Logger,
+	rSSHKeys sshkeys.Repository,
+	explainer query.Explainer,
+	service *ingester.Service,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		searchStart := time.Now()
 
-		queryParams := SSHKeysQuery{}
-		err := c.BindQuery(&queryParams)
+		uriParams := SSHKeysURI{}
+		err := c.BindUri(&uriParams)
 		if err != nil {
-			_ = c.Error(fmt.Errorf("failed to parse query: %w", err))
+			_ = c.Error(apierrors.InvalidPathParamError(c))
 			return
 		}
 
-		uriParams := SSHKeysURI{}
-		err = c.BindUri(&uriParams)
+		queryParams := SSHKeysQuery{}
+		err = c.BindQuery(&queryParams)
 		if err != nil {
-			_ = c.Error(fmt.Errorf("failed to parse uri: %w", err))
+			_ = c.Error(apierrors.InvalidQueryParamError(c, []string{"limit", "offset"}))
+			return
+		}
+
+		_, err = explainer.ExplainQuery(c.Request.Context(), uriParams.Query)
+		if err != nil {
+			_ = c.Error(
+				apierrors.InvalidSearchQueryError(
+					c,
+					err,
+					uriParams.Query,
+					[]string{"merlindorin", "@username:merlindorin", "@key:{XXX}"},
+				),
+			)
 			return
 		}
 
@@ -104,13 +124,16 @@ func SSHKeys(logger *zap.Logger, rSSHKeys sshkeys.Repository, service *ingester.
 
 			err = rSSHKeys.Search(c.Request.Context(), uriParams.Query, queryParams.Limit, queryParams.Offset, searchResult)
 			if err != nil {
-				_ = c.Error(fmt.Errorf("failed to search: %w", err))
+				logger.Error("failed to search query", zap.String("query", uriParams.Query), zap.Error(err))
+
+				_ = c.Error(apierrors.InternalError(c))
 				return
 			}
 		}
 
 		c.JSON(http.StatusOK, SSHKeysResponse{
 			Entities: searchResult.Entities,
+			Query:    uriParams.Query,
 			Total:    searchResult.Total,
 			Limit:    queryParams.Limit,
 			Offset:   queryParams.Offset,

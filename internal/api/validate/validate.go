@@ -1,50 +1,40 @@
 package validate
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/merlindorin/sshark-api/internal/redisquery"
+	"github.com/merlindorin/sshark-api/internal/api/apierrors"
+	"github.com/merlindorin/sshark-api/internal/domain/query"
 )
 
 type URI struct {
 	Query string `uri:"query" binding:"required"`
 }
 
-type Response struct {
-	Query       string `json:"query"`
-	IsValid     bool   `json:"is_valid"`
-	Message     string `json:"message"`
-	Explanation string `json:"explanation"`
-}
-
-func Validate() gin.HandlerFunc {
+func Validate(explainer query.Explainer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uriParams := URI{}
 		err := c.BindUri(&uriParams)
 		if err != nil {
-			_ = c.Error(fmt.Errorf("failed to parse uri: %w", err))
+			_ = c.Error(apierrors.InvalidPathParamError(c))
 			return
 		}
 
-		_, parseErr := redisquery.Parse(uriParams.Query)
-		if parseErr != nil {
-			c.JSON(http.StatusOK, Response{
-				Query:       uriParams.Query,
-				IsValid:     false,
-				Message:     "Invalid query syntax",
-				Explanation: parseErr.Error(),
-			})
+		_, explainErr := explainer.ExplainQuery(c.Request.Context(), uriParams.Query)
+		if explainErr != nil {
+			_ = c.Error(
+				apierrors.InvalidSearchQueryError(
+					c,
+					err,
+					uriParams.Query,
+					[]string{"merlindorin", "@username:merlindorin", "@key:{XXX}"},
+				),
+			)
 			return
 		}
 
-		c.JSON(http.StatusOK, Response{
-			Query:       uriParams.Query,
-			IsValid:     true,
-			Message:     "Query is valid",
-			Explanation: "",
-		})
+		c.JSON(http.StatusNoContent, nil)
 	}
 }

@@ -6,6 +6,7 @@ require (
 	github.com/alecthomas/kong v1.13.0
 	github.com/alecthomas/kong-yaml v0.2.0
 	github.com/alecthomas/participle/v2 v2.1.4
+	github.com/gin-contrib/requestid v1.0.5
 	github.com/gin-contrib/timeout v1.1.0
 	github.com/gin-contrib/zap v1.1.6
 	github.com/gin-gonic/gin v1.11.0

@@ -195,6 +195,11 @@ func (r Repository) DropIndex(ctx context.Context) error {
 	return err
 }
 
+// ExplainQuery validates a query and returns its execution plan without executing it.
+func (r Repository) ExplainQuery(ctx context.Context, query string) (string, error) {
+	return r.rdb.Do(ctx, "FT.EXPLAIN", indexName, query).Text()
+}
+
 // EnsureIndex creates the RediSearch index if it doesn't exist.
 // If forceReindex is true, the existing index will be dropped and recreated.
 // Index fields:

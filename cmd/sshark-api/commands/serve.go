@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-contrib/requestid"
+
+	"github.com/merlindorin/sshark-api/internal/api/apierrors"
 	"github.com/merlindorin/sshark-api/internal/api/probe"
 	"github.com/merlindorin/sshark-api/internal/api/search"
 	"github.com/merlindorin/sshark-api/internal/api/sshkeys"
@@ -21,6 +24,7 @@ import (
 
 	"github.com/gin-contrib/timeout"
 	ginzap "github.com/gin-contrib/zap"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/merlindorin/go-shared/pkg/cmd"
@@ -75,6 +79,7 @@ func (s *Serve) Run(common *cmd.Commons) error {
 
 	r := gin.New()
 	r.Use(timeout.New(timeout.WithTimeout(s.Timeout)))
+	r.Use(requestid.New())
 	r.Use(ginzap.Ginzap(logger, time.RFC3339, true))
 	r.Use(ginzap.RecoveryWithZap(logger, true))
 	r.Use(ErrorHandler(logger))
@@ -85,9 +90,9 @@ func (s *Serve) Run(common *cmd.Commons) error {
 	srepo := sshkeysrepository.NewRedisRepository(rdb)
 	grepo := githubrepository.NewRepository(rdb)
 	service := ingester.New(grepo, srepo, cl)
-	search.MountV1(r.Group("/api/v1/search"), logger.Named("search"), srepo, service)
+	search.MountV1(r.Group("/api/v1/search"), logger.Named("search"), srepo, srepo, service)
 	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), srepo)
-	validate.MountV1(r.Group("/api/v1/validate"))
+	validate.MountV1(r.Group("/api/v1/validate"), srepo)
 
 	err := srepo.EnsureIndex(context.Background(), s.RedisForceReindex)
 	if err != nil {
@@ -128,17 +133,14 @@ func ErrorHandler(logger *zap.Logger) gin.HandlerFunc {
 		if len(c.Errors) > 0 {
 			err := c.Errors.Last().Err
 
-			// if domain.repositories.IsNotFoundError(err) {
-			//	c.JSON(http.StatusNotFound, gin.H{
-			//		"success": false,
-			//		"message": err.Error(),
-			//	})
-			//	return
-			//}
+			var httpError *apierrors.APIError
+			if ok := errors.As(err, &httpError); ok {
+				c.JSON(httpError.StatusCode, httpError)
+				return
+			}
 
-			logger.Error("Error in request", zap.Error(err))
+			logger.Error("APIError in request", zap.Error(err))
 
-			// Step4: Respond with a generic error message
 			c.JSON(http.StatusInternalServerError, map[string]any{
 				"success": false,
 				"message": err.Error(),
