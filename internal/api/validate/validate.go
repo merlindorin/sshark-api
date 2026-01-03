@@ -22,8 +22,8 @@ func Validate(explainer query.Explainer) gin.HandlerFunc {
 			return
 		}
 
-		_, explainErr := explainer.ExplainQuery(c.Request.Context(), uriParams.Query)
-		if explainErr != nil {
+		_, err = explainer.ExplainQuery(c.Request.Context(), uriParams.Query)
+		if err != nil {
 			_ = c.Error(
 				apierrors.InvalidSearchQueryError(
 					c,

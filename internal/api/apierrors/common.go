@@ -46,7 +46,7 @@ func InvalidSearchQueryError(c *gin.Context, err error, q string, examples []str
 		fmt.Sprintf(
 			"The search query `%s` is not a valid search. We found the following technical error: %s",
 			q,
-			err,
+			err.Error(),
 		),
 		fmt.Sprintf(
 			"You can use one the following query `%s` or get mode examples in the documentation.",
