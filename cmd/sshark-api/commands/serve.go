@@ -139,12 +139,8 @@ func ErrorHandler(logger *zap.Logger) gin.HandlerFunc {
 				return
 			}
 
-			logger.Error("APIError in request", zap.Error(err))
-
-			c.JSON(http.StatusInternalServerError, map[string]any{
-				"success": false,
-				"message": err.Error(),
-			})
+			logger.Error("Uncatched error in request", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, apierrors.InternalError(c))
 		}
 	}
 }
