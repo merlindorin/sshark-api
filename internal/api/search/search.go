@@ -2,6 +2,7 @@ package search
 
 import (
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/ingester"
 	"github.com/merlindorin/sshark-api/internal/domain/query"
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
-	"github.com/merlindorin/sshark-api/internal/redisquery"
 )
 
 type SSHKeysQuery struct {
@@ -24,44 +24,68 @@ type SSHKeysURI struct {
 	Query string `uri:"query" binding:"required"`
 }
 
-func (s *SSHKeysURI) Usernames() ([]string, error) {
-	match := []string{}
+// Usernames extracts usernames from the search query.
+// It looks for usernames in:
+//   - Plain words: "merlindorin"
+//   - Field TEXT search: "@username:merlindorin"
+//   - Field TAG search: "@username_exact:{merlindorin}" or "@username_exact:{user1|user2}"
+func (s *SSHKeysURI) Usernames() []string {
+	q := s.Query
+	seen := make(map[string]struct{})
+	var usernames []string
 
-	parse, err := redisquery.Parse(s.Query)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, term := range parse.Terms {
-		found := ""
-		if term.Field != nil {
-			if term.Field.Name == "@username" {
-				found = *term.Field.Text
+	addUsername := func(name string) {
+		name = strings.TrimSuffix(name, "*")
+		name = strings.Trim(name, "\"")
+		if name != "" {
+			if _, ok := seen[name]; !ok {
+				seen[name] = struct{}{}
+				usernames = append(usernames, name)
 			}
 		}
-
-		if term.Word != nil {
-			found = *term.Word
-		}
-
-		if term.Fuzzy != nil {
-			found = *term.Fuzzy
-		}
-
-		if term.Phrase != nil {
-			found = *term.Phrase
-		}
-
-		found = strings.Trim(found, "*")
-		found = strings.Trim(found, "%")
-		found = strings.Trim(found, "\"")
-
-		if len(found) > 0 {
-			match = append(match, found)
-		}
 	}
 
-	return match, nil
+	// Match @username:{val1|val2} or @username_exact:{val1|val2}
+	tagPattern := `@username(?:_exact)?:\{([^}]+)\}`
+	tagRegex := regexp.MustCompile(tagPattern)
+	for _, match := range tagRegex.FindAllStringSubmatch(q, -1) {
+		if len(match) > 1 {
+			for _, val := range strings.Split(match[1], "|") {
+				addUsername(val)
+			}
+		}
+	}
+	// Remove matched patterns from query for next step
+	q = tagRegex.ReplaceAllString(q, "")
+
+	// Match @username:value or @username_exact:value (TEXT field)
+	textPattern := `@username(?:_exact)?:([^\s]+)`
+	textRegex := regexp.MustCompile(textPattern)
+	for _, match := range textRegex.FindAllStringSubmatch(q, -1) {
+		if len(match) > 1 {
+			addUsername(match[1])
+		}
+	}
+	// Remove matched patterns
+	q = textRegex.ReplaceAllString(q, "")
+
+	// Remove other field patterns like @type:{...} or @provider:...
+	otherFieldPattern := `@\w+:(?:\{[^}]*\}|[^\s]+)`
+	q = regexp.MustCompile(otherFieldPattern).ReplaceAllString(q, "")
+
+	// Remove operators and special chars, then split remaining words
+	q = strings.NewReplacer(
+		"(", " ", ")", " ",
+		"|", " ", "-", " ",
+		"~", " ", "*", "",
+	).Replace(q)
+
+	// Remaining words are potential usernames
+	for _, word := range strings.Fields(q) {
+		addUsername(word)
+	}
+
+	return usernames
 }
 
 type SSHKeysResponse struct {
@@ -112,23 +136,20 @@ func SSHKeys(
 
 		searchResult := sshkeys.NewSearchResult()
 
-		usernames, err := uriParams.Usernames()
-		if err == nil {
-			for _, username := range usernames {
-				ingestErr := service.Ingest(ctx, username)
-				if ingestErr != nil {
-					logger.Error("failed to ingest username", zap.String("username", username), zap.Error(ingestErr))
-					continue
-				}
+		for _, username := range uriParams.Usernames() {
+			ingestErr := service.Ingest(ctx, username)
+			if ingestErr != nil {
+				logger.Error("failed to ingest username", zap.String("username", username), zap.Error(ingestErr))
+				continue
 			}
+		}
 
-			err = rSSHKeys.Search(c.Request.Context(), uriParams.Query, queryParams.Limit, queryParams.Offset, searchResult)
-			if err != nil {
-				logger.Error("failed to search query", zap.String("query", uriParams.Query), zap.Error(err))
+		err = rSSHKeys.Search(c.Request.Context(), uriParams.Query, queryParams.Limit, queryParams.Offset, searchResult)
+		if err != nil {
+			logger.Error("failed to search query", zap.String("query", uriParams.Query), zap.Error(err))
 
-				_ = c.Error(apierrors.InternalError(c))
-				return
-			}
+			_ = c.Error(apierrors.InternalError(c))
+			return
 		}
 
 		c.JSON(http.StatusOK, SSHKeysResponse{
