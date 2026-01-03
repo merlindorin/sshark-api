@@ -206,7 +206,8 @@ func (r Repository) ExplainQuery(ctx context.Context, query string) (string, err
 //   - id           (TAG)
 //   - username     (TEXT, weight 3.0) - for full-text search
 //   - username     (TAG) as username_exact - for exact match
-//   - source       (TAG) - github, gitlab, etc.
+//   - source       (TAG) - full URL of the key source
+//   - provider     (TAG) - github, gitlab, etc.
 //   - type         (TAG) - ssh-rsa, ssh-ed25519, etc.
 //   - key          (TAG) - for reverse lookup by key content
 //   - comment      (TEXT, weight 1.0)
@@ -231,6 +232,7 @@ func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 		&redis.FieldSchema{FieldName: "$.username", As: "username", FieldType: redis.SearchFieldTypeText, Weight: 3.0},
 		&redis.FieldSchema{FieldName: "$.username", As: "username_exact", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.source", As: "source", FieldType: redis.SearchFieldTypeTag},
+		&redis.FieldSchema{FieldName: "$.provider", As: "provider", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.type", As: "type", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.key", As: "key", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.comment", As: "comment", FieldType: redis.SearchFieldTypeText, Weight: 1.0},
