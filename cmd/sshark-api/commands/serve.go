@@ -16,6 +16,7 @@ import (
 	"github.com/merlindorin/sshark-api/internal/api/probe"
 	"github.com/merlindorin/sshark-api/internal/api/search"
 	"github.com/merlindorin/sshark-api/internal/api/sshkeys"
+	"github.com/merlindorin/sshark-api/internal/api/stats"
 	"github.com/merlindorin/sshark-api/internal/api/validate"
 	"github.com/merlindorin/sshark-api/internal/domain/ingester"
 	"github.com/merlindorin/sshark-api/internal/infra/github"
@@ -93,6 +94,7 @@ func (s *Serve) Run(common *cmd.Commons) error {
 	search.MountV1(r.Group("/api/v1/search"), logger.Named("search"), srepo, srepo, service)
 	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), srepo)
 	validate.MountV1(r.Group("/api/v1/validate"), srepo)
+	stats.MountV1(r.Group("/api/v1/stats"), srepo)
 
 	err := srepo.EnsureIndex(context.Background(), s.RedisForceReindex)
 	if err != nil {

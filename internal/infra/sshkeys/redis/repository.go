@@ -14,6 +14,7 @@ import (
 
 	"github.com/merlindorin/sshark-api/internal/domain/github"
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
+	"github.com/merlindorin/sshark-api/internal/domain/stats"
 	"github.com/merlindorin/sshark-api/internal/infra"
 )
 
@@ -241,4 +242,82 @@ func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 	).Result()
 
 	return err
+}
+
+// GetStats retrieves aggregated statistics about SSH keys.
+func (r Repository) GetStats(ctx context.Context, result *stats.Stats) error {
+	keysResult, err := r.rdb.Do(ctx,
+		"FT.AGGREGATE", indexName, "*",
+		"GROUPBY", "0",
+		"REDUCE", "COUNT", "0", "AS", "total",
+	).Result()
+	if err != nil {
+		return fmt.Errorf("failed to get total keys: %w", err)
+	}
+
+	result.TotalKeys = parseAggregateTotal(keysResult)
+
+	usernameResult, err := r.rdb.Do(ctx,
+		"FT.AGGREGATE", indexName, "*",
+		"GROUPBY", "1", "@username_exact",
+		"REDUCE", "COUNT", "0",
+	).Result()
+	if err != nil {
+		return fmt.Errorf("failed to get unique usernames: %w", err)
+	}
+
+	result.TotalUsernames = parseAggregateCount(usernameResult)
+
+	providerResult, err := r.rdb.Do(ctx,
+		"FT.AGGREGATE", indexName, "*",
+		"GROUPBY", "1", "@provider",
+		"REDUCE", "COUNT", "0",
+	).Result()
+	if err != nil {
+		return fmt.Errorf("failed to get unique providers: %w", err)
+	}
+
+	result.TotalProviders = parseAggregateCount(providerResult)
+
+	return nil
+}
+
+// parseAggregateCount extracts the count of groups from FT.AGGREGATE RESP3 result.
+func parseAggregateCount(result interface{}) int {
+	m, ok := result.(map[interface{}]interface{})
+	if !ok {
+		return 0
+	}
+	results, ok := m["results"].([]interface{})
+	if !ok {
+		return 0
+	}
+	return len(results)
+}
+
+// parseAggregateTotal extracts the "total" field from FT.AGGREGATE RESP3 result with GROUPBY 0.
+func parseAggregateTotal(result interface{}) int {
+	m, ok := result.(map[interface{}]interface{})
+	if !ok {
+		return 0
+	}
+	results, ok := m["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		return 0
+	}
+	row, ok := results[0].(map[interface{}]interface{})
+	if !ok {
+		return 0
+	}
+	extra, ok := row["extra_attributes"].(map[interface{}]interface{})
+	if !ok {
+		return 0
+	}
+	total, isStr := extra["total"].(string)
+	if !isStr {
+		return 0
+	}
+	var count int
+	_, _ = fmt.Sscanf(total, "%d", &count)
+	return count
 }
