@@ -2,8 +2,8 @@ apiVersion: v2
 name: sshark-api
 description: SSHark API - SSH public key lookup service that fetches and caches GitHub SSH keys
 type: application
-version: 0.1.5
-appVersion: "v0.1.5"
+version: 0.1.6
+appVersion: "v0.1.6"
 keywords:
   - ssh
   - github
