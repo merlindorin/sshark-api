@@ -25,7 +25,8 @@ redis:
   port: 6379
   password: ""
   db: 0
-  # Set to true to force recreating the search index on startup (will clear existing data)
+  # Set to true to force recreating the search index on startup
+  # This only rebuilds the index, not the underlying data
   forceReindex: false
   existingSecret: ""
   existingSecretPasswordKey: "redis-password"
