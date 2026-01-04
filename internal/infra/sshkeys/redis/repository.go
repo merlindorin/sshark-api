@@ -37,6 +37,7 @@ func NewRedisRepository(rdb *redis.Client) *Repository {
 		rdb:                       rdb,
 		indexKey:                  indexKey,
 		defaultSortIndexFieldName: defaultSortField,
+		defaultSortOrderAsc:       false,
 	}
 }
 
