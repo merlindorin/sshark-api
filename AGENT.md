@@ -57,6 +57,28 @@ Clean architecture with three layers:
 - Statistics use `FT.AGGREGATE` with GROUPBY for counts
 - Repository methods hydrate result objects passed by reference (e.g., `GetStats(ctx, *Stats) error`)
 
+## Commit Convention
+
+All commits must follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
+
+Format: `<type>: <description>`
+
+Common types:
+- `feat` - New feature
+- `fix` - Bug fix
+- `docs` - Documentation changes
+- `chore` - Maintenance tasks (deps, CI, etc.)
+- `refactor` - Code refactoring without behavior change
+- `test` - Adding or updating tests
+
+Examples:
+```bash
+git commit -m "feat: add user authentication endpoint"
+git commit -m "fix: handle empty search query"
+git commit -m "docs: update API documentation"
+git commit -m "chore: bump chart version to 0.1.7"
+```
+
 ## Release Workflow
 
 1. **Commit changes** (pre-commit hook runs `task` automatically)
