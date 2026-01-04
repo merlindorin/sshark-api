@@ -10,6 +10,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 # Redis Stack subchart configuration
+# WARNING: The redis-stack subchart does NOT support persistence by default.
+# Data will be lost on pod restart. For production, either:
+# 1. Use an external Redis with persistence (set redis-stack.enabled: false and configure redis.host)
+# 2. Add your own PVC and volumeMounts to the redis-stack deployment
 redis-stack:
   enabled: true
 
@@ -21,7 +25,8 @@ redis:
   port: 6379
   password: ""
   db: 0
-  forceReindex: true
+  # Set to true to force recreating the search index on startup (will clear existing data)
+  forceReindex: false
   existingSecret: ""
   existingSecretPasswordKey: "redis-password"
 
