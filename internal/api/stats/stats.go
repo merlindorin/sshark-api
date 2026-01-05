@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/merlindorin/sshark-api/internal/api/apierrors"
 	"github.com/merlindorin/sshark-api/internal/domain/stats"
@@ -16,10 +17,11 @@ type Repository interface {
 }
 
 // GetStats returns a handler that retrieves aggregated statistics.
-func GetStats(repo Repository) gin.HandlerFunc {
+func GetStats(logger *zap.Logger, repo Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		result := &stats.Stats{}
 		if err := repo.GetStats(c.Request.Context(), result); err != nil {
+			logger.Error("failed to get stats", zap.Error(err))
 			_ = c.Error(apierrors.InternalError(c))
 			return
 		}

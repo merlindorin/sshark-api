@@ -94,7 +94,7 @@ func (s *Serve) Run(common *cmd.Commons) error {
 	search.MountV1(r.Group("/api/v1/search"), logger.Named("search"), srepo, srepo, service)
 	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), srepo)
 	validate.MountV1(r.Group("/api/v1/validate"), srepo)
-	stats.MountV1(r.Group("/api/v1/stats"), srepo)
+	stats.MountV1(r.Group("/api/v1/stats"), logger.Named("stats"), srepo)
 
 	err := srepo.EnsureIndex(context.Background(), s.RedisForceReindex)
 	if err != nil {
