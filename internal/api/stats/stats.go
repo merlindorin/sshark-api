@@ -21,7 +21,7 @@ func GetStats(logger *zap.Logger, repo Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		result := &stats.Stats{}
 		if err := repo.GetStats(c.Request.Context(), result); err != nil {
-			logger.Error("failed to get stats", zap.Error(err))
+			logger.Info("failed to get stats", zap.Error(err))
 			_ = c.Error(apierrors.InternalError(c))
 			return
 		}

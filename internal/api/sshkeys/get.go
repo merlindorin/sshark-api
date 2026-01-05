@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.uber.org/zap"
+
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
 	"github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
 
@@ -15,11 +17,12 @@ type GetSSHKeyURIParams struct {
 	ID string `uri:"id" binding:"required,uuid"`
 }
 
-func GetSSHKey(repo *redis.Repository) gin.HandlerFunc {
+func GetSSHKey(logger *zap.Logger, repo *redis.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uriParams := GetSSHKeyURIParams{}
 		err := c.BindUri(&uriParams)
 		if err != nil {
+			logger.Info("failed to parse uri params", zap.Error(err))
 			_ = c.Error(fmt.Errorf("failed to parse uri params: %w", err))
 			return
 		}
@@ -28,6 +31,7 @@ func GetSSHKey(repo *redis.Repository) gin.HandlerFunc {
 
 		err = repo.Get(c.Request.Context(), uuid.MustParse(uriParams.ID), &key)
 		if err != nil {
+			logger.Error("failed to find ssh key", zap.String("id", uriParams.ID), zap.Error(err))
 			_ = c.Error(fmt.Errorf("failed to fetch sshkey: %w", err))
 			return
 		}

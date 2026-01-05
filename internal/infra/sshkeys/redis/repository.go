@@ -16,6 +16,7 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
 	"github.com/merlindorin/sshark-api/internal/domain/stats"
 	"github.com/merlindorin/sshark-api/internal/infra"
+	sshkeys2 "github.com/merlindorin/sshark-api/internal/infra/sshkeys"
 )
 
 const (
@@ -53,7 +54,6 @@ func (r Repository) Search(ctx context.Context, search string, limit, offset int
 	searchOptions := &redis.FTSearchOptions{
 		Limit:       limit,
 		LimitOffset: offset,
-		WithScores:  true,
 	}
 
 	raw, err := r.rdb.FTSearchWithArgs(ctx, fmt.Sprintf("idx:%s", r.indexKey), search, searchOptions).RawResult()
@@ -87,14 +87,14 @@ func (r Repository) List(ctx context.Context, limit, offset int, result *sshkeys
 	}
 
 	// As of today, it is necessary to use RawResult() for RESP3 compatibility
-	raw, err := r.rdb.FTSearchWithArgs(ctx, "idx:sshkeys", "*", searchOptions).RawResult()
+	raw, err := r.rdb.FTSearchWithArgs(ctx, indexName, "*", searchOptions).RawResult()
 	if err != nil {
-		return fmt.Errorf("can get raw result: %w", err)
+		return fmt.Errorf("cannot get raw result: %w", err)
 	}
 
 	keys, total, err := infra.ParseRawResult[sshkeys.Entity](raw)
 	if err != nil {
-		return fmt.Errorf("can parse raw result: %w", err)
+		return fmt.Errorf("cannot parse raw result: %w", err)
 	}
 
 	*result = sshkeys.ListResult{
@@ -129,28 +129,22 @@ func (r Repository) CreateFromAuthorizedKeys(
 			option = []string{}
 		}
 
-		sshkey := SSHKey{
-			ID:        uuid.New(),
-			Username:  authorizedKeys.Username.String(),
-			Source:    authorizedKeys.Source,
-			Provider:  "github",
-			Type:      key.Type(),
-			Comment:   comment,
-			Options:   option,
-			Key:       key.Marshal(),
-			Raw:       all,
-			Rest:      leftover,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+		sshkey := sshkeys.Entity{
+			Username: authorizedKeys.Username.String(),
+			Source:   authorizedKeys.Source,
+			Provider: "github",
+			Type:     key.Type(),
+			Comment:  comment,
+			Options:  option,
+			Key:      key.Marshal(),
 		}
 
-		status := r.rdb.JSONSet(ctx, fmt.Sprintf("%s:%s", r.indexKey, sshkey.ID), "$", sshkey)
-		if status.Err() != nil {
-			return fmt.Errorf("failed to save ssh key: %w", status.Err())
+		if createErr := r.Create(ctx, &sshkey); createErr != nil {
+			return fmt.Errorf("failed to create key: %w", createErr)
 		}
 
 		if entities != nil {
-			*entities = append(*entities, sshkey.GetEntity())
+			*entities = append(*entities, sshkey)
 		}
 
 		all = leftover
@@ -197,28 +191,21 @@ func (r Repository) DropIndex(ctx context.Context) error {
 	return err
 }
 
-// ExplainQuery validates a query and returns its execution plan without executing it.
-// Note: FT.EXPLAIN is not supported by Dragonfly, so this is a no-op.
-func (r Repository) ExplainQuery(_ context.Context, _ string) (string, error) {
-	return "", nil
+// ExplainQuery validates a query by running it with LIMIT 0 0.
+// This is compatible with both RediSearch and Dragonfly (which doesn't support FT.EXPLAIN).
+func (r Repository) ValidateQuery(ctx context.Context, query string) (string, error) {
+	_, err := r.rdb.Do(ctx, "FT.SEARCH", indexName, query, "LIMIT", "0", "0").Result()
+	if err != nil {
+		return "", err
+	}
+	return "OK", nil
 }
 
 // EnsureIndex creates the RediSearch index if it doesn't exist.
 // If forceReindex is true, the existing index will be dropped and recreated.
-// Index fields:
-//   - id           (TAG)
-//   - username     (TEXT, weight 3.0) - for full-text search
-//   - username     (TAG) as username_exact - for exact match
-//   - source       (TAG) - full URL of the key source
-//   - provider     (TAG) - github, gitlab, etc.
-//   - type         (TAG) - ssh-rsa, ssh-ed25519, etc.
-//   - key          (TAG) - for reverse lookup by key content
-//   - comment      (TEXT, weight 1.0)
-//   - created_at   (TEXT, sortable)
-//   - updated_at   (TEXT, sortable)
 func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 	if forceReindex {
-		_ = r.DropIndex(ctx) // ignore error if index doesn't exist
+		_ = r.DropIndex(ctx)
 	}
 
 	_, err := r.rdb.FTInfo(ctx, indexName).Result()
@@ -232,26 +219,34 @@ func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 			Prefix: []interface{}{fmt.Sprintf("%s:", r.indexKey)},
 		},
 		&redis.FieldSchema{FieldName: "$.id", As: "id", FieldType: redis.SearchFieldTypeTag},
-		&redis.FieldSchema{FieldName: "$.username", As: "username", FieldType: redis.SearchFieldTypeText, Weight: 3.0},
-		&redis.FieldSchema{FieldName: "$.username", As: "username_exact", FieldType: redis.SearchFieldTypeTag},
+		&redis.FieldSchema{FieldName: "$.username", As: "username", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.source", As: "source", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.provider", As: "provider", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.type", As: "type", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.key", As: "key", FieldType: redis.SearchFieldTypeTag},
-		&redis.FieldSchema{FieldName: "$.comment", As: "comment", FieldType: redis.SearchFieldTypeText, Weight: 1.0},
-		&redis.FieldSchema{FieldName: "$.created_at", As: "created_at", FieldType: redis.SearchFieldTypeText, Sortable: true},
-		&redis.FieldSchema{FieldName: "$.updated_at", As: "updated_at", FieldType: redis.SearchFieldTypeText, Sortable: true},
+		&redis.FieldSchema{FieldName: "$.comment", As: "comment", FieldType: redis.SearchFieldTypeTag},
 	).Result()
 
 	return err
 }
 
-// GetStats retrieves aggregated statistics about SSH keys.
-func (r Repository) GetStats(ctx context.Context, result *stats.Stats) error {
+func (r Repository) SSHKeyCount(ctx context.Context) (int, error) {
 	keysResult, err := r.rdb.Do(ctx,
 		"FT.AGGREGATE", indexName, "*",
 		"GROUPBY", "0",
 		"REDUCE", "COUNT", "0", "AS", "total",
+	).Result()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get total keys: %w", err)
+	}
+
+	return parseAggregateTotal(keysResult), nil
+}
+
+// GetStats retrieves aggregated statistics about SSH keys.
+func (r Repository) GetStats(ctx context.Context, result *stats.Stats) error {
+	keysResult, err := r.rdb.Do(ctx,
+		"FT.AGGREGATE", indexName, "*", "GROUPBY", "1", "@key", "GROUPBY", "0", "REDUCE", "COUNT", "0", "as", "count",
 	).Result()
 	if err != nil {
 		return fmt.Errorf("failed to get total keys: %w", err)
@@ -260,66 +255,69 @@ func (r Repository) GetStats(ctx context.Context, result *stats.Stats) error {
 	result.TotalKeys = parseAggregateTotal(keysResult)
 
 	usernameResult, err := r.rdb.Do(ctx,
-		"FT.AGGREGATE", indexName, "*",
-		"GROUPBY", "1", "@username_exact",
-		"REDUCE", "COUNT", "0",
+		"FT.AGGREGATE", indexName, "*", "GROUPBY", "1", "@username", "GROUPBY", "0", "REDUCE", "COUNT", "0", "as", "count",
 	).Result()
 	if err != nil {
 		return fmt.Errorf("failed to get unique usernames: %w", err)
 	}
 
-	result.TotalUsernames = parseAggregateCount(usernameResult)
+	result.TotalUsernames = parseAggregateTotal(usernameResult)
 
 	providerResult, err := r.rdb.Do(ctx,
-		"FT.AGGREGATE", indexName, "*",
-		"GROUPBY", "1", "@provider",
-		"REDUCE", "COUNT", "0",
+		"FT.AGGREGATE", indexName, "*", "GROUPBY", "1", "@provider", "GROUPBY", "0", "REDUCE", "COUNT", "0", "as", "count",
 	).Result()
 	if err != nil {
 		return fmt.Errorf("failed to get unique providers: %w", err)
 	}
 
-	result.TotalProviders = parseAggregateCount(providerResult)
+	result.TotalProviders = parseAggregateTotal(providerResult)
 
 	return nil
 }
 
-// parseAggregateCount extracts the count of groups from FT.AGGREGATE RESP3 result.
-func parseAggregateCount(result interface{}) int {
-	m, ok := result.(map[interface{}]interface{})
-	if !ok {
-		return 0
+func (r Repository) Create(ctx context.Context, sshkey *sshkeys.Entity) error {
+	// we do not need the monotonic component
+	now := time.Now().Truncate(0)
+
+	model := sshkeys2.SSHKey{
+		ID:        uuid.New(),
+		Username:  sshkey.Username,
+		Source:    sshkey.Source,
+		Provider:  sshkey.Provider,
+		Type:      sshkey.Type,
+		Comment:   sshkey.Comment,
+		Options:   sshkey.Options,
+		Key:       sshkey.Key,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
-	results, ok := m["results"].([]interface{})
-	if !ok {
-		return 0
+
+	status := r.rdb.JSONSet(ctx, fmt.Sprintf("%s:%s", r.indexKey, model.ID), "$", model)
+	if status.Err() != nil {
+		return fmt.Errorf("failed to save ssh key: %w", status.Err())
 	}
-	return len(results)
+
+	*sshkey = model.ToEntity()
+
+	return nil
 }
 
-// parseAggregateTotal extracts the "total" field from FT.AGGREGATE RESP3 result with GROUPBY 0.
+// parseAggregateTotal extracts the "total" field from FT.AGGREGATE result with GROUPBY 0.
 func parseAggregateTotal(result interface{}) int {
-	m, ok := result.(map[interface{}]interface{})
+	m, ok := result.([]interface{})
+	if !ok || len(m) != 2 {
+		return 0
+	}
+
+	results, ok := m[1].([]interface{})
+	if !ok || len(results) != 2 {
+		return 0
+	}
+
+	total, ok := results[1].(float64)
 	if !ok {
 		return 0
 	}
-	results, ok := m["results"].([]interface{})
-	if !ok || len(results) == 0 {
-		return 0
-	}
-	row, ok := results[0].(map[interface{}]interface{})
-	if !ok {
-		return 0
-	}
-	extra, ok := row["extra_attributes"].(map[interface{}]interface{})
-	if !ok {
-		return 0
-	}
-	total, isStr := extra["total"].(string)
-	if !isStr {
-		return 0
-	}
-	var count int
-	_, _ = fmt.Sscanf(total, "%d", &count)
-	return count
+
+	return int(total)
 }

@@ -7,33 +7,32 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
 )
 
-//nolint:govet,nestif,gocognit // expected complexity
+//nolint:govet,nestif // expected complexity
 func ParseRawResult[T any](raw interface{}) ([]T, int, error) {
 	keys := []T{}
 	var total int
 
-	if resultMap, ok := raw.(map[interface{}]interface{}); ok {
-		if totalResults, ok := resultMap["total_results"].(int64); ok {
-			total = int(totalResults)
+	if resultSlice, ok := raw.([]interface{}); ok && len(resultSlice) > 0 {
+		// First element is total count
+		switch v := resultSlice[0].(type) {
+		case int64:
+			total = int(v)
+		case int:
+			total = v
 		}
-		if results, ok := resultMap["results"]; ok {
-			if resultsSlice, ok := results.([]interface{}); ok {
-				for _, r := range resultsSlice {
-					if doc, ok := r.(map[interface{}]interface{}); ok {
-						if extraAttrs, ok := doc["extra_attributes"]; ok {
-							if attrs, ok := extraAttrs.(map[interface{}]interface{}); ok {
-								if jsonStr, ok := attrs["$"].(string); ok {
-									var key T
 
-									err := json.Unmarshal([]byte(jsonStr), &key)
-									if err != nil {
-										return nil, 0, fmt.Errorf("failed to parse JSON result: %w", err)
-									}
+		// Parse remaining elements: [key, map, key, map, ...]
+		for i := 1; i < len(resultSlice); i += 2 {
+			// Skip key name at i, get map at i+1
+			if i+1 >= len(resultSlice) {
+				break
+			}
 
-									keys = append(keys, key)
-								}
-							}
-						}
+			if docMap, ok := resultSlice[i+1].(map[interface{}]interface{}); ok {
+				if jsonStr, ok := docMap["$"].(string); ok {
+					var key T
+					if err := json.Unmarshal([]byte(jsonStr), &key); err == nil {
+						keys = append(keys, key)
 					}
 				}
 			}
@@ -43,14 +42,13 @@ func ParseRawResult[T any](raw interface{}) ([]T, int, error) {
 	return keys, total, nil
 }
 
-type SearchResultItemWithScore struct {
+type SearchResultItem struct {
 	Entity sshkeys.Entity `json:"entity"`
-	Score  float64        `json:"score"`
 }
 
-type SearchResultWithScore []SearchResultItemWithScore
+type SearchResult []SearchResultItem
 
-func (s SearchResultWithScore) ToSearchEntities() []sshkeys.Entity {
+func (s SearchResult) ToSearchEntities() []sshkeys.Entity {
 	sr := []sshkeys.Entity{}
 
 	for _, item := range s {
@@ -60,38 +58,28 @@ func (s SearchResultWithScore) ToSearchEntities() []sshkeys.Entity {
 	return sr
 }
 
-//nolint:govet,nestif,gocognit // expected complexity
-func ParseSearchResult(raw interface{}) (SearchResultWithScore, int, error) {
-	var items SearchResultWithScore
+//nolint:govet,nestif // expected complexity
+func ParseSearchResult(raw interface{}) (SearchResult, int, error) {
+	var items SearchResult
 	var total int
 
-	if resultMap, ok := raw.(map[interface{}]interface{}); ok {
-		if totalResults, ok := resultMap["total_results"].(int64); ok {
-			total = int(totalResults)
+	if resultSlice, ok := raw.([]interface{}); ok && len(resultSlice) > 0 {
+		switch v := resultSlice[0].(type) {
+		case int64:
+			total = int(v)
+		case int:
+			total = v
 		}
-		if results, ok := resultMap["results"]; ok {
-			if resultsSlice, ok := results.([]interface{}); ok {
-				for _, r := range resultsSlice {
-					if doc, ok := r.(map[interface{}]interface{}); ok {
-						item := SearchResultItemWithScore{}
 
-						// Extract score
-						if score, ok := doc["score"].(float64); ok {
-							item.Score = score
-						}
+		for i := 1; i < len(resultSlice); i += 2 {
+			if i+1 >= len(resultSlice) {
+				break
+			}
 
-						// Extract entity from extra_attributes
-						if extraAttrs, ok := doc["extra_attributes"]; ok {
-							if attrs, ok := extraAttrs.(map[interface{}]interface{}); ok {
-								if jsonStr, ok := attrs["$"].(string); ok {
-									err := json.Unmarshal([]byte(jsonStr), &item.Entity)
-									if err != nil {
-										return nil, 0, fmt.Errorf("failed to parse JSON result: %w", err)
-									}
-								}
-							}
-						}
-
+			if docMap, ok := resultSlice[i+1].(map[interface{}]interface{}); ok {
+				if jsonStr, ok := docMap["$"].(string); ok {
+					item := SearchResultItem{}
+					if err := json.Unmarshal([]byte(jsonStr), &item.Entity); err == nil {
 						items = append(items, item)
 					}
 				}

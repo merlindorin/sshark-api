@@ -24,13 +24,41 @@ type SSHKeysURI struct {
 	Query string `uri:"query" binding:"required"`
 }
 
+// BuildQuery transforms the query for Dragonfly compatibility.
+// Since all fields are TAGs, plain text queries like "merlindorin" must be
+// converted to TAG syntax searching both username and key fields with wildcard.
+// If the query already contains field syntax (@field:), it's returned as-is.
+func (receiver SSHKeysURI) BuildQuery() string {
+	q := strings.TrimSpace(receiver.Query)
+	if q == "" || q == "*" {
+		return "*"
+	}
+
+	// If query already has field syntax, return as-is
+	if strings.Contains(q, "@") {
+		return q
+	}
+
+	// Plain text query - search both username and key with wildcard
+	// Escape special characters for TAG field
+	q = strings.ReplaceAll(q, " ", "\\ ")
+
+	// Add wildcard only if not already present
+	wildcard := "*"
+	if strings.HasSuffix(q, "*") {
+		wildcard = ""
+	}
+
+	return "@username:{" + q + wildcard + "} | @key:{" + q + wildcard + "}"
+}
+
 // Usernames extracts usernames from the search query.
 // It looks for usernames in:
 //   - Plain words: "merlindorin"
 //   - Field TEXT search: "@username:merlindorin"
 //   - Field TAG search: "@username_exact:{merlindorin}" or "@username_exact:{user1|user2}"
-func (s *SSHKeysURI) Usernames() []string {
-	q := s.Query
+func (receiver *SSHKeysURI) Usernames() []string {
+	q := receiver.Query
 	seen := make(map[string]struct{})
 	var usernames []string
 
@@ -100,7 +128,7 @@ type SSHKeysResponse struct {
 func SSHKeys(
 	logger *zap.Logger,
 	rSSHKeys sshkeys.Repository,
-	explainer query.Explainer,
+	explainer query.Validator,
 	service *ingester.Service,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -110,6 +138,7 @@ func SSHKeys(
 		uriParams := SSHKeysURI{}
 		err := c.BindUri(&uriParams)
 		if err != nil {
+			logger.Info("failed to bind URI", zap.Error(err))
 			_ = c.Error(apierrors.InvalidPathParamError(c))
 			return
 		}
@@ -117,18 +146,22 @@ func SSHKeys(
 		queryParams := SSHKeysQuery{}
 		err = c.BindQuery(&queryParams)
 		if err != nil {
+			logger.Info("failed to bind query", zap.Error(err))
 			_ = c.Error(apierrors.InvalidQueryParamError(c, []string{"limit", "offset"}))
 			return
 		}
 
-		_, err = explainer.ExplainQuery(c.Request.Context(), uriParams.Query)
+		builtQuery := uriParams.BuildQuery()
+
+		_, err = explainer.ValidateQuery(c.Request.Context(), builtQuery)
 		if err != nil {
+			logger.Info("failed to validate query", zap.Error(err))
 			_ = c.Error(
 				apierrors.InvalidSearchQueryError(
 					c,
 					err,
 					uriParams.Query,
-					[]string{"merlindorin", "@username:merlindorin", "@key:{XXX}"},
+					[]string{"merlindorin", "@username:{merlindorin}", "@type:{ssh-ed25519}"},
 				),
 			)
 			return
@@ -144,17 +177,16 @@ func SSHKeys(
 			}
 		}
 
-		err = rSSHKeys.Search(c.Request.Context(), uriParams.Query, queryParams.Limit, queryParams.Offset, searchResult)
+		err = rSSHKeys.Search(c.Request.Context(), builtQuery, queryParams.Limit, queryParams.Offset, searchResult)
 		if err != nil {
 			logger.Error("failed to search query", zap.String("query", uriParams.Query), zap.Error(err))
-
 			_ = c.Error(apierrors.InternalError(c))
 			return
 		}
 
 		c.JSON(http.StatusOK, SSHKeysResponse{
 			Entities: searchResult.Entities,
-			Query:    uriParams.Query,
+			Query:    builtQuery,
 			Total:    searchResult.Total,
 			Limit:    queryParams.Limit,
 			Offset:   queryParams.Offset,

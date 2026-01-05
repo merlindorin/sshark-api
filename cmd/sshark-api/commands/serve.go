@@ -72,6 +72,7 @@ func (s *Serve) Run(common *cmd.Commons) error {
 		Password:      s.RedisPassword,
 		DB:            s.RedisDB,
 		UnstableResp3: true,
+		Protocol:      3, // Use RESP2 for Dragonfly compatibility
 	})
 
 	if !common.Development {
@@ -92,8 +93,8 @@ func (s *Serve) Run(common *cmd.Commons) error {
 	grepo := githubrepository.NewRepository(rdb)
 	service := ingester.New(grepo, srepo, cl)
 	search.MountV1(r.Group("/api/v1/search"), logger.Named("search"), srepo, srepo, service)
-	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), srepo)
-	validate.MountV1(r.Group("/api/v1/validate"), srepo)
+	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), logger.Named("sshkeys"), srepo)
+	validate.MountV1(r.Group("/api/v1/validate"), logger.Named("validate"), srepo)
 	stats.MountV1(r.Group("/api/v1/stats"), logger.Named("stats"), srepo)
 
 	err := srepo.EnsureIndex(context.Background(), s.RedisForceReindex)

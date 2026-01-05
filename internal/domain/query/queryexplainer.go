@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// Explainer validates queries against Redis and returns execution plans.
-type Explainer interface {
-	ExplainQuery(ctx context.Context, query string) (string, error)
+// Validator validates queries against Redis and returns execution plans.
+type Validator interface {
+	ValidateQuery(ctx context.Context, query string) (string, error)
 }

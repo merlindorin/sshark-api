@@ -13,7 +13,7 @@ func MountV1(
 	r gin.IRouter,
 	l *zap.Logger,
 	srepo sshkeys.Repository,
-	explainer query.Explainer,
+	explainer query.Validator,
 	service *ingester.Service,
 ) {
 	r.GET("/:query", SSHKeys(l, srepo, explainer, service))

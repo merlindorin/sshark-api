@@ -1,4 +1,4 @@
-package redis
+package sshkeys
 
 import (
 	"time"
@@ -23,7 +23,7 @@ type SSHKey struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func (receiver SSHKey) GetEntity() sshkeys.Entity {
+func (receiver *SSHKey) ToEntity() sshkeys.Entity {
 	return sshkeys.Entity{
 		ID:        receiver.ID,
 		Username:  receiver.Username,
