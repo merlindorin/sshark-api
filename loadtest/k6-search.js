@@ -39,7 +39,7 @@ const ALL_USERNAMES = open('./github_users.txt').trim().split('\n');
 // Build query string for N usernames
 function buildQuery(usernames) {
   // Format: @username:"user1" | @username:"user2" | ...
-  return usernames.map(u => `@username:"${u}"`).join(' | ');
+  return usernames.map(u => `@username:{"${u}"}`).join(' | ');
 }
 
 // Get a batch of usernames for this iteration
