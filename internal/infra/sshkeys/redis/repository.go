@@ -198,8 +198,9 @@ func (r Repository) DropIndex(ctx context.Context) error {
 }
 
 // ExplainQuery validates a query and returns its execution plan without executing it.
-func (r Repository) ExplainQuery(ctx context.Context, query string) (string, error) {
-	return r.rdb.Do(ctx, "FT.EXPLAIN", indexName, query).Text()
+// Note: FT.EXPLAIN is not supported by Dragonfly, so this is a no-op.
+func (r Repository) ExplainQuery(_ context.Context, _ string) (string, error) {
+	return "", nil
 }
 
 // EnsureIndex creates the RediSearch index if it doesn't exist.
