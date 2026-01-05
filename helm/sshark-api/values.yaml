@@ -54,6 +54,8 @@ dragonfly:
   skipFSGroup: false
   # Annotations to add to the Dragonfly resource
   annotations: {}
+  # Node selector for Dragonfly pods
+  nodeSelector: {}
 
 # Redis connection configuration
 # When redis-stack.enabled is true, host is auto-configured to the subchart service

@@ -43,4 +43,8 @@ spec:
   {{- if .Values.dragonfly.skipFSGroup }}
   skipFSGroup: {{ .Values.dragonfly.skipFSGroup }}
   {{- end }}
+  {{- with .Values.dragonfly.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}
