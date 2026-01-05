@@ -17,10 +17,49 @@ fullnameOverride: ""
 redis-stack:
   enabled: true
 
+# Dragonfly configuration (alternative to redis-stack)
+# Requires dragonfly-operator to be installed in the cluster
+# See: https://github.com/dragonflydb/dragonfly-operator
+dragonfly:
+  enabled: false
+  # Number of Dragonfly replicas
+  replicas: 1
+  # Resource requests and limits
+  resources:
+    requests:
+      cpu: 500m
+      memory: 500Mi
+    limits:
+      cpu: 600m
+      memory: 750Mi
+  # Storage configuration for persistence
+  storage:
+    # Enable persistent storage (uses auto-provisioned PVC)
+    enabled: true
+    # Storage size for the PVC
+    size: 1Gi
+    # Storage class name (leave empty to use default)
+    storageClassName: ""
+    # Use an existing PVC instead of creating one
+    existingPersistentVolumeClaimName: ""
+  # Scheduled snapshot configuration (optional)
+  snapshot:
+    # Enable periodic snapshots
+    enabled: false
+    # Cron schedule for snapshots (e.g., "0 */6 * * *" for every 6 hours)
+    cron: ""
+  # Additional arguments to pass to Dragonfly
+  args: []
+  # Skip assigning FSGroup to the pod security context
+  skipFSGroup: false
+  # Annotations to add to the Dragonfly resource
+  annotations: {}
+
 # Redis connection configuration
 # When redis-stack.enabled is true, host is auto-configured to the subchart service
+# When dragonfly.enabled is true, host is auto-configured to the dragonfly service
 redis:
-  # Only used when redis-stack.enabled is false
+  # Only used when redis-stack.enabled and dragonfly.enabled are both false
   host: ""
   port: 6379
   password: ""

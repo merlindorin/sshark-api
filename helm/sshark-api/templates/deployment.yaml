@@ -46,7 +46,9 @@ spec:
             - name: PORT
               value: {{ .Values.service.targetPort | quote }}
             - name: REDIS_HOST
-              {{- if index .Values "redis-stack" "enabled" }}
+              {{- if .Values.dragonfly.enabled }}
+              value: "{{ include "sshark-api.fullname" . }}-dragonfly"
+              {{- else if index .Values "redis-stack" "enabled" }}
               value: "redis-stack"
               {{- else }}
               value: {{ .Values.redis.host | quote }}
