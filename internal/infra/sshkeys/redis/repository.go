@@ -184,7 +184,7 @@ func (r Repository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// DropIndex removes the RediSearch index.
+// DropIndex removes the index.
 // Use this to force index recreation with a new schema.
 func (r Repository) DropIndex(ctx context.Context) error {
 	_, err := r.rdb.FTDropIndex(ctx, indexName).Result()
@@ -192,16 +192,15 @@ func (r Repository) DropIndex(ctx context.Context) error {
 }
 
 // ExplainQuery validates a query by running it with LIMIT 0 0.
-// This is compatible with both RediSearch and Dragonfly (which doesn't support FT.EXPLAIN).
 func (r Repository) ValidateQuery(ctx context.Context, query string) (string, error) {
 	_, err := r.rdb.Do(ctx, "FT.SEARCH", indexName, query, "LIMIT", "0", "0").Result()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to validate query: %w", err)
 	}
 	return "OK", nil
 }
 
-// EnsureIndex creates the RediSearch index if it doesn't exist.
+// EnsureIndex creates an index if it doesn't exist.
 // If forceReindex is true, the existing index will be dropped and recreated.
 func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 	if forceReindex {

@@ -39,17 +39,35 @@ func (receiver SSHKeysURI) BuildQuery() string {
 		return q
 	}
 
-	// Plain text query - search both username and key with wildcard
-	// Escape special characters for TAG field
-	q = strings.ReplaceAll(q, " ", "\\ ")
-
-	// Add wildcard only if not already present
+	// Check for wildcard BEFORE escaping
 	wildcard := "*"
 	if strings.HasSuffix(q, "*") {
 		wildcard = ""
+		q = strings.TrimSuffix(q, "*")
 	}
 
+	// Plain text query - search both username and key with wildcard
+	// Escape special characters for RediSearch TAG field
+	q = escapeTagQuery(q)
+
 	return "@username:{" + q + wildcard + "} | @key:{" + q + wildcard + "}"
+}
+
+// escapeTagQuery escapes special RediSearch characters in a TAG query.
+// Characters like - are operators in RediSearch and must be escaped.
+func escapeTagQuery(s string) string {
+	// Escape backslash FIRST to avoid double-escaping
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+
+	// RediSearch special characters that need escaping in TAG queries
+	specialChars := []string{
+		"-", ".", "_", "+", "=", "&", "|", "!", "(", ")", "{", "}",
+		"[", "]", "^", "\"", "~", "*", "?", ":", "/", " ",
+	}
+	for _, char := range specialChars {
+		s = strings.ReplaceAll(s, char, "\\"+char)
+	}
+	return s
 }
 
 // Usernames extracts usernames from the search query.
@@ -128,7 +146,7 @@ type SSHKeysResponse struct {
 func SSHKeys(
 	logger *zap.Logger,
 	rSSHKeys sshkeys.Repository,
-	explainer query.Validator,
+	queryValidator query.Validator,
 	service *ingester.Service,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -153,7 +171,7 @@ func SSHKeys(
 
 		builtQuery := uriParams.BuildQuery()
 
-		_, err = explainer.ValidateQuery(c.Request.Context(), builtQuery)
+		_, err = queryValidator.ValidateQuery(c.Request.Context(), builtQuery)
 		if err != nil {
 			logger.Info("failed to validate query", zap.Error(err))
 			_ = c.Error(
