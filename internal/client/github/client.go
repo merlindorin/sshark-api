@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/merlindorin/go-shared/pkg/must"
 	"github.com/merlindorin/go-shared/pkg/net/do"
 	"github.com/merlindorin/go-shared/pkg/net/rest"
 	"go.uber.org/zap"
@@ -13,6 +14,7 @@ import (
 
 var (
 	ErrNotFound = fmt.Errorf("not found")
+	GithubURL   = must.Get(url.Parse("https://github.com")) //nolint:gochecknoglobals // constant URL for GitHub API
 )
 
 type Client struct {
@@ -22,13 +24,8 @@ type Client struct {
 func NewClient(logger *zap.Logger, options ...do.Option) *Client {
 	cl := &Client{}
 
-	githubURL, err := url.Parse("https://github.com")
-	if err != nil {
-		logger.Fatal("failed to parse github url", zap.Error(err))
-	}
-
 	cl.Requester = rest.NewRest(
-		githubURL,
+		GithubURL,
 		append([]do.Option{
 			do.WithJSONRequest(),
 			do.WithLogger(logger),

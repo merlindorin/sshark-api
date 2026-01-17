@@ -6,13 +6,17 @@ require (
 	github.com/alecthomas/kong v1.13.0
 	github.com/alecthomas/kong-yaml v0.2.0
 	github.com/alecthomas/participle/v2 v2.1.4
+	github.com/clerk/clerk-sdk-go/v2 v2.5.1
+	github.com/clerkinc/clerk-sdk-go v1.49.1
 	github.com/gin-contrib/requestid v1.0.5
 	github.com/gin-contrib/timeout v1.1.0
 	github.com/gin-contrib/zap v1.1.6
 	github.com/gin-gonic/gin v1.11.0
+	github.com/go-jose/go-jose/v3 v3.0.4
 	github.com/google/uuid v1.6.0
 	github.com/merlindorin/go-shared v0.0.0-20251229120347-f6f1097953a6
 	github.com/redis/go-redis/v9 v9.17.2
+	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.46.0
 )
@@ -447,7 +451,6 @@ require (
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.3.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tcnksm/go-gitconfig v0.1.2 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect

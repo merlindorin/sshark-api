@@ -10,18 +10,20 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/gin-contrib/requestid"
 
-	"github.com/merlindorin/sshark-api/internal/api/apierrors"
+	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
+	"github.com/merlindorin/sshark-api/internal/api/me"
 	"github.com/merlindorin/sshark-api/internal/api/probe"
 	"github.com/merlindorin/sshark-api/internal/api/search"
 	"github.com/merlindorin/sshark-api/internal/api/sshkeys"
 	"github.com/merlindorin/sshark-api/internal/api/stats"
-	"github.com/merlindorin/sshark-api/internal/api/validate"
 	"github.com/merlindorin/sshark-api/internal/domain/ingester"
 	"github.com/merlindorin/sshark-api/internal/infra/github"
 	githubrepository "github.com/merlindorin/sshark-api/internal/infra/github/redis"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
+	"github.com/merlindorin/sshark-api/internal/middleware"
 
 	"github.com/gin-contrib/timeout"
 	ginzap "github.com/gin-contrib/zap"
@@ -29,51 +31,39 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/merlindorin/go-shared/pkg/cmd"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+
+	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 )
 
 type Serve struct {
 	Host string `env:"HOST" help:"Host to bind the server to" default:"0.0.0.0"`
 	Port int    `env:"PORT" help:"Port to bind the server to" default:"8080"`
 
-	Timeout time.Duration `default:"5s" help:"HTTP request timeout"`
+	ClerkToken string `env:"CLERK_TOKEN" help:"Clerk to use for auth"`
 
-	RedisHost         string `env:"REDIS_HOST" help:"Redis host" default:"localhost"`
-	RedisPort         int    `env:"REDIS_PORT" help:"Redis port" default:"6379"`
-	RedisPassword     string `env:"REDIS_PASSWORD" help:"Redis password"`
-	RedisDB           int    `env:"REDIS_DB" help:"Redis db" default:"0"`
-	RedisForceReindex bool   `env:"REDIS_FORCE_REINDEX" help:"Redis force reindex"`
+	Timeout time.Duration `default:"5s" help:"HTTP request timeout"`
 }
 
 func (s *Serve) Addr() string {
 	return fmt.Sprintf("%s:%d", s.Host, s.Port)
 }
 
-func (s *Serve) RedisAddr() string {
-	return fmt.Sprintf("%s:%d", s.RedisHost, s.RedisPort)
-}
-
-func (s *Serve) Run(common *cmd.Commons) error {
-	logger := common.MustLogger()
+func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis) error {
+	logger := common.MustLogger().Named("server")
 
 	logger.Info(
 		"Starting server...",
 		zap.String("name", common.Version.Name()),
 		zap.String("version", common.Version.Version()),
 		zap.String("address", s.Addr()),
-		zap.String("redis.address", s.RedisAddr()),
-		zap.Int("redis.db", s.RedisDB),
+		zap.String("redis.address", redis.Addr()),
+		zap.Int("redis.db", redis.DB),
 		zap.String("gin.version", gin.Version),
 	)
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr:          s.RedisAddr(),
-		Password:      s.RedisPassword,
-		DB:            s.RedisDB,
-		UnstableResp3: true,
-		Protocol:      3, // Use RESP2 for Dragonfly compatibility
-	})
+	redisClient := redis.Client()
+	clerk.SetKey(s.ClerkToken)
 
 	if !common.Development {
 		gin.SetMode(gin.ReleaseMode)
@@ -84,28 +74,24 @@ func (s *Serve) Run(common *cmd.Commons) error {
 	r.Use(requestid.New())
 	r.Use(ginzap.Ginzap(logger, time.RFC3339, true))
 	r.Use(ginzap.RecoveryWithZap(logger, true))
-	r.Use(ErrorHandler(logger))
+	r.Use(middleware.ErrorHandler(logger))
 
 	probe.MountProbe(r)
 
 	cl := github.NewFetcher(logger)
-	srepo := sshkeysrepository.NewRedisRepository(rdb)
-	grepo := githubrepository.NewRepository(rdb)
+	srepo := sshkeysrepository.NewRedisRepository(redisClient)
+	grepo := githubrepository.NewRepository(redisClient)
 	service := ingester.New(grepo, srepo, cl)
-	search.MountV1(r.Group("/api/v1/search"), logger.Named("search"), srepo, srepo, service)
-	sshkeys.MountV1(r.Group("/api/v1/sshkeys"), logger.Named("sshkeys"), srepo)
-	validate.MountV1(r.Group("/api/v1/validate"), logger.Named("validate"), srepo)
-	stats.MountV1(r.Group("/api/v1/stats"), logger.Named("stats"), srepo)
 
-	err := srepo.EnsureIndex(context.Background(), s.RedisForceReindex)
-	if err != nil {
-		return fmt.Errorf("failed to ensure index: %w", err)
-	}
+	api := r.Group("/api/v1")
+	protected := middleware.AdaptClerk(clerkhttp.RequireHeaderAuthorization())
 
-	err = grepo.EnsureIndex(context.Background(), s.RedisForceReindex)
-	if err != nil {
-		return fmt.Errorf("failed to ensure index: %w", err)
-	}
+	search.MountV1(api.Group("/search"), logger.Named("search"), srepo, srepo, service)
+	sshkeys.MountV1(api.Group("/sshkeys"), logger.Named("sshkeys"), srepo)
+	stats.MountV1(api.Group("/stats"), logger.Named("stats"), srepo)
+
+	// protected
+	me.MountV1(api.Group("/me", protected), logger.Named("me"))
 
 	errCh := make(chan error, 1)
 	term := make(chan os.Signal, 1)
@@ -125,25 +111,5 @@ func (s *Serve) Run(common *cmd.Commons) error {
 	case serverErr := <-errCh:
 		logger.Error("Server error", zap.Error(serverErr))
 		return fmt.Errorf("server error: %w", serverErr)
-	}
-}
-
-// ErrorHandler captures errors and returns a consistent JSON error response.
-func ErrorHandler(logger *zap.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Next()
-
-		if len(c.Errors) > 0 {
-			err := c.Errors.Last().Err
-
-			var httpError *apierrors.APIError
-			if ok := errors.As(err, &httpError); ok {
-				c.JSON(httpError.StatusCode, httpError)
-				return
-			}
-
-			logger.Error("Uncatched error in request", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, apierrors.InternalError(c))
-		}
 	}
 }

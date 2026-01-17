@@ -40,6 +40,7 @@ func (s *Service) Ingest(ctx context.Context, username string) error {
 	if errors.Is(err, github.ErrUserAlreadyExist) {
 		return nil
 	}
+
 	if err != nil {
 		return fmt.Errorf("cannot create github user: %w", err)
 	}
