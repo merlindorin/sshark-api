@@ -120,7 +120,9 @@ func TestRepository_Create(t *testing.T) {
 			assert.NoError(t, r.Create(t.Context(), &tt.args.sshkey))
 
 			res := sshkeys.ListResult{}
-			assert.NoError(t, r.List(t.Context(), 10, 0, &res))
+			limit := 10
+			offset := 0
+			assert.NoError(t, r.List(t.Context(), &limit, &offset, &res))
 
 			var got sshkeys.Entity
 			assert.NoError(t, r.Get(t.Context(), tt.args.sshkey.ID, &got))

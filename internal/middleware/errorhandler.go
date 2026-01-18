@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/merlindorin/sshark-api/api/common"
+	"github.com/merlindorin/sshark-api/internal/api"
 	"go.uber.org/zap"
-
-	"github.com/merlindorin/sshark-api/internal/api/apierrors"
 )
 
 // ErrorHandler captures errors and returns a consistent JSON error response.
@@ -18,14 +18,14 @@ func ErrorHandler(logger *zap.Logger) gin.HandlerFunc {
 		if len(c.Errors) > 0 {
 			err := c.Errors.Last().Err
 
-			var httpError *apierrors.APIError
+			var httpError *api.APIError
 			if ok := errors.As(err, &httpError); ok {
 				c.JSON(httpError.StatusCode, httpError)
 				return
 			}
 
 			logger.Error("Uncatched error in request", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, apierrors.InternalError(c))
+			c.JSON(http.StatusInternalServerError, common.InternalError(c))
 		}
 	}
 }

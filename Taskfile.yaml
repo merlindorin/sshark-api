@@ -13,3 +13,7 @@ dotenv:
   - .env
   - PROJECT
   - .env.default
+
+tasks:
+  generate:
+    cmd: go generate ./...

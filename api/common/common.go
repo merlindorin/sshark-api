@@ -1,4 +1,4 @@
-package apierrors
+package common
 
 import (
 	"fmt"
@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/merlindorin/sshark-api/internal/api"
 )
 
-func InvalidPathParamError(c *gin.Context) *APIError {
-	return NewAPIError(c, http.StatusBadRequest, NewDetailedError(
+func InvalidPathParamError(c *gin.Context) *api.APIError {
+	return api.NewAPIError(c, http.StatusBadRequest, api.NewDetailedError(
 		c,
 		"INVALID_PATH_PARAM",
 		"Not a valid path param",
@@ -18,8 +19,8 @@ func InvalidPathParamError(c *gin.Context) *APIError {
 	))
 }
 
-func InvalidQueryParamError(c *gin.Context, availableQuery []string) *APIError {
-	return NewAPIError(c, http.StatusBadRequest, NewDetailedError(
+func InvalidQueryParamError(c *gin.Context, availableQuery []string) *api.APIError {
+	return api.NewAPIError(c, http.StatusBadRequest, api.NewDetailedError(
 		c,
 		"INVALID_QUERY_PARAM",
 		"Not a valid query param",
@@ -28,8 +29,8 @@ func InvalidQueryParamError(c *gin.Context, availableQuery []string) *APIError {
 	))
 }
 
-func InternalError(c *gin.Context) *APIError {
-	return NewAPIError(c, http.StatusInternalServerError, NewDetailedError(
+func InternalError(c *gin.Context) *api.APIError {
+	return api.NewAPIError(c, http.StatusInternalServerError, api.NewDetailedError(
 		c,
 		"INTERNAL_ERROR",
 		"Internal error",
@@ -38,8 +39,8 @@ func InternalError(c *gin.Context) *APIError {
 	))
 }
 
-func InvalidSearchQueryError(c *gin.Context, err error, q string, examples []string) *APIError {
-	return NewAPIError(c, http.StatusBadRequest, NewDetailedError(
+func InvalidSearchQueryError(c *gin.Context, err error, q string, examples []string) *api.APIError {
+	return api.NewAPIError(c, http.StatusBadRequest, api.NewDetailedError(
 		c,
 		"INVALID_SEARCH_QUERY",
 		"Not a valid search query",

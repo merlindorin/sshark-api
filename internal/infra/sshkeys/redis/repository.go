@@ -50,34 +50,39 @@ type QuerySearch struct {
 	CreatedAt *time.Time
 }
 
-func (r Repository) Search(ctx context.Context, search string, limit, offset int, result *sshkeys.SearchResult) error {
+//nolint:nonamedreturns // existing code pattern
+func (r Repository) Search(
+	ctx context.Context,
+	search string,
+	limit, offset *int,
+	callback func(entity *sshkeys.Entity),
+) (total int, err error) {
 	searchOptions := &redis.FTSearchOptions{
-		Limit:       limit,
-		LimitOffset: offset,
+		Limit:       *limit,
+		LimitOffset: *offset,
 	}
 
 	raw, err := r.rdb.FTSearchWithArgs(ctx, fmt.Sprintf("idx:%s", r.indexKey), search, searchOptions).RawResult()
 	if err != nil {
-		return fmt.Errorf("failed to search: %w", err)
+		return 0, fmt.Errorf("failed to search: %w", err)
 	}
 
 	items, total, err := infra.ParseSearchResult(raw)
 	if err != nil {
-		return fmt.Errorf("can parse raw result: %w", err)
+		return 0, fmt.Errorf("can parse raw result: %w", err)
 	}
 
-	*result = sshkeys.SearchResult{
-		Entities: items.ToSearchEntities(),
-		Total:    total,
+	for _, item := range items {
+		callback(&item.Entity)
 	}
 
-	return nil
+	return total, nil
 }
 
-func (r Repository) List(ctx context.Context, limit, offset int, result *sshkeys.ListResult) error {
+func (r Repository) List(ctx context.Context, limit, offset *int, result *sshkeys.ListResult) error {
 	searchOptions := &redis.FTSearchOptions{
-		Limit:       limit,
-		LimitOffset: offset,
+		Limit:       *limit,
+		LimitOffset: *offset,
 		SortBy: []redis.FTSearchSortBy{
 			{
 				FieldName: r.defaultSortIndexFieldName,

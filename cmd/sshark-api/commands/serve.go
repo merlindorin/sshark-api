@@ -12,28 +12,23 @@ import (
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/gin-contrib/requestid"
-
+	"github.com/gin-contrib/timeout"
+	ginzap "github.com/gin-contrib/zap"
+	"github.com/gin-gonic/gin"
+	"github.com/merlindorin/go-shared/pkg/cmd"
+	"github.com/merlindorin/sshark-api/api/authenticated"
+	v2 "github.com/merlindorin/sshark-api/api/authenticated/v1"
+	"github.com/merlindorin/sshark-api/api/private"
+	v3 "github.com/merlindorin/sshark-api/api/private/v1"
+	"github.com/merlindorin/sshark-api/api/public"
+	v1 "github.com/merlindorin/sshark-api/api/public/v1"
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
-	"github.com/merlindorin/sshark-api/internal/api/me"
-	"github.com/merlindorin/sshark-api/internal/api/probe"
-	"github.com/merlindorin/sshark-api/internal/api/search"
-	"github.com/merlindorin/sshark-api/internal/api/sshkeys"
-	"github.com/merlindorin/sshark-api/internal/api/stats"
 	"github.com/merlindorin/sshark-api/internal/domain/ingester"
 	"github.com/merlindorin/sshark-api/internal/infra/github"
 	githubrepository "github.com/merlindorin/sshark-api/internal/infra/github/redis"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
 	"github.com/merlindorin/sshark-api/internal/middleware"
-
-	"github.com/gin-contrib/timeout"
-	ginzap "github.com/gin-contrib/zap"
-
-	"github.com/gin-gonic/gin"
-
-	"github.com/merlindorin/go-shared/pkg/cmd"
 	"go.uber.org/zap"
-
-	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 )
 
 type Serve struct {
@@ -76,22 +71,19 @@ func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis
 	r.Use(ginzap.RecoveryWithZap(logger, true))
 	r.Use(middleware.ErrorHandler(logger))
 
-	probe.MountProbe(r)
-
 	cl := github.NewFetcher(logger)
 	srepo := sshkeysrepository.NewRedisRepository(redisClient)
 	grepo := githubrepository.NewRepository(redisClient)
 	service := ingester.New(grepo, srepo, cl)
 
-	api := r.Group("/api/v1")
-	protected := middleware.AdaptClerk(clerkhttp.RequireHeaderAuthorization())
+	requireAuthMiddleware := middleware.RequireAuth()
 
-	search.MountV1(api.Group("/search"), logger.Named("search"), srepo, srepo, service)
-	sshkeys.MountV1(api.Group("/sshkeys"), logger.Named("sshkeys"), srepo)
-	stats.MountV1(api.Group("/stats"), logger.Named("stats"), srepo)
-
-	// protected
-	me.MountV1(api.Group("/me", protected), logger.Named("me"))
+	private.RegisterHandlers(r, v3.NewServer(logger.Named("internal api")))
+	public.RegisterHandlers(r.Group("/api/v1"), v1.NewServer(logger.Named("public api"), srepo, service))
+	authenticated.RegisterHandlers(
+		r.Group("/api/v1", requireAuthMiddleware),
+		v2.NewServer(logger.Named("authenticated api")),
+	)
 
 	errCh := make(chan error, 1)
 	term := make(chan os.Signal, 1)
@@ -99,7 +91,14 @@ func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis
 
 	go func() {
 		logger.Info("HTTP server listening", zap.String("address", s.Addr()))
-		if runErr := r.Run(s.Addr()); runErr != nil && !errors.Is(runErr, http.ErrServerClosed) {
+
+		server := &http.Server{
+			Handler:           r,
+			Addr:              s.Addr(),
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+
+		if runErr := server.ListenAndServe(); runErr != nil && !errors.Is(runErr, http.ErrServerClosed) {
 			errCh <- runErr
 		}
 	}()

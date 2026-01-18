@@ -30,10 +30,10 @@ type ListResult struct {
 // Repository defines the interface for SSH key persistence operations.
 type Repository interface {
 	// Search finds SSH keys matching the search term with pagination.
-	Search(ctx context.Context, search string, limit, offset int, res *SearchResult) error
+	Search(ctx context.Context, search string, limit, offset *int, entityfn func(entity *Entity)) (total int, err error)
 
 	// List retrieves all SSH keys with pagination.
-	List(ctx context.Context, limit, offset int, result *ListResult) error
+	List(ctx context.Context, limit, offset *int, result *ListResult) error
 
 	// Get retrieves a single SSH key by its ID.
 	Get(ctx context.Context, id uuid.UUID, key *Entity) error

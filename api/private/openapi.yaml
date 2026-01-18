@@ -1,0 +1,57 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: SShark private API
+  description: private API
+
+servers:
+  - url: /
+    description: private API v1
+
+security: []
+
+paths:
+  /liveness:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Kubernetes liveness probe endpoint
+      operationId: getLiveness
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProbeResponse'
+
+  /readiness:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Kubernetes readiness probe endpoint
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProbeResponse'
+
+components:
+  schemas:
+    ProbeResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+
+tags:
+  - name: Health
+    description: Health check and probe endpoints

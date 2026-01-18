@@ -1,0 +1,132 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: SShark Common
+
+paths: {}
+
+components:
+  schemas:
+    SSHKey:
+      type: object
+      required:
+        - id
+        - username
+        - source
+        - type
+        - key
+        - provider
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the SSH key
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        username:
+          type: string
+          description: Username associated with the SSH key
+          example: merlindorin
+        source:
+          type: string
+          description: Source URL where the key was fetched
+          example: https://github.com/merlindorin.keys
+        type:
+          type: string
+          description: SSH key type
+          enum:
+            - ssh-rsa
+            - ssh-ed25519
+            - ecdsa-sha2-nistp256
+            - ecdsa-sha2-nistp384
+            - ecdsa-sha2-nistp521
+          example: ssh-ed25519
+        comment:
+          type: string
+          description: Comment from the SSH key
+          example: user@hostname
+        options:
+          type: array
+          items:
+            type: string
+          description: SSH key options
+          example: [ ]
+        key:
+          type: string
+          format: byte
+          description: SSH public key bytes
+        provider:
+          type: string
+          description: Provider name
+          example: github
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-17T00:00:00Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - status_code
+        - error
+        - request_id
+        - documentation_url
+      properties:
+        status:
+          type: string
+          description: HTTP status text
+          example: Bad Request
+        status_code:
+          type: integer
+          description: HTTP status code
+          example: 400
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - timestamp
+            - path
+          properties:
+            code:
+              type: string
+              description: Error code
+              enum:
+                - INVALID_PATH_PARAM
+                - INVALID_QUERY_PARAM
+                - INVALID_SEARCH_QUERY
+                - INTERNAL_ERROR
+              example: INVALID_SEARCH_QUERY
+            message:
+              type: string
+              description: Human-readable error message
+              example: Not a valid search query
+            details:
+              type: string
+              description: Technical details about the error
+              example: "The search query `@invalid` is not valid"
+            timestamp:
+              type: string
+              format: date-time
+              description: Error timestamp
+              example: "2024-01-17T00:00:00Z"
+            path:
+              type: string
+              description: Request path that caused the error
+              example: "/api/v1/search/@invalid"
+            suggestion:
+              type: string
+              description: Suggestion for fixing the error
+              example: "You can use: merlindorin, @username:{merlindorin}, @type:{ssh-ed25519}"
+        request_id:
+          type: string
+          format: uuid
+          description: Unique request identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        documentation_url:
+          type: string
+          format: uri
+          description: Link to API documentation
+          example: "https://sshark.app/doc"

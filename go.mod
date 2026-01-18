@@ -7,14 +7,13 @@ require (
 	github.com/alecthomas/kong-yaml v0.2.0
 	github.com/alecthomas/participle/v2 v2.1.4
 	github.com/clerk/clerk-sdk-go/v2 v2.5.1
-	github.com/clerkinc/clerk-sdk-go v1.49.1
 	github.com/gin-contrib/requestid v1.0.5
 	github.com/gin-contrib/timeout v1.1.0
 	github.com/gin-contrib/zap v1.1.6
 	github.com/gin-gonic/gin v1.11.0
-	github.com/go-jose/go-jose/v3 v3.0.4
 	github.com/google/uuid v1.6.0
 	github.com/merlindorin/go-shared v0.0.0-20251229120347-f6f1097953a6
+	github.com/oapi-codegen/runtime v1.1.2
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.1
@@ -90,6 +89,7 @@ require (
 	github.com/alingse/asasalint v0.0.11 // indirect
 	github.com/alingse/nilnesserr v0.2.0 // indirect
 	github.com/anchore/go-macholibre v0.0.0-20250826193721-3cd206ca93aa // indirect
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/ashanbrown/forbidigo/v2 v2.3.0 // indirect
 	github.com/ashanbrown/makezero/v2 v2.1.0 // indirect
@@ -195,6 +195,7 @@ require (
 	github.com/docker/docker-credential-helpers v0.9.4 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/dprotaso/go-yit v0.0.0-20240618133044-5a0af90af097 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
@@ -208,6 +209,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fzipp/gocyclo v0.6.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
+	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/ghostiam/protogetter v0.3.17 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/github/smimesign v0.2.0 // indirect
@@ -217,6 +219,7 @@ require (
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.7.0 // indirect
 	github.com/go-git/go-git/v5 v5.16.4 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -364,6 +367,7 @@ require (
 	github.com/modelcontextprotocol/registry v1.4.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/moricho/tparallel v0.3.2 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
@@ -384,6 +388,9 @@ require (
 	github.com/nishanths/license/v5 v5.0.4 // indirect
 	github.com/nishanths/predeclared v0.2.2 // indirect
 	github.com/nunnatsa/ginkgolinter v0.21.2 // indirect
+	github.com/oapi-codegen/oapi-codegen/v2 v2.5.1 // indirect
+	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
+	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
@@ -392,6 +399,7 @@ require (
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -442,6 +450,8 @@ require (
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/sourcegraph/go-diff v0.7.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/speakeasy-api/jsonpath v0.6.0 // indirect
+	github.com/speakeasy-api/openapi-overlay v0.10.2 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
@@ -471,9 +481,11 @@ require (
 	github.com/uudashr/gocognit v1.2.0 // indirect
 	github.com/uudashr/iface v1.4.1 // indirect
 	github.com/vbatts/tar-split v0.12.2 // indirect
+	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
 	github.com/wagoodman/go-progress v0.0.0-20230925121702-07e42b3cdba0 // indirect
 	github.com/whyrusleeping/cbor-gen v0.1.3-0.20240731173018-74d74643234c // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
+	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xen0n/gosmopolitan v1.3.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
@@ -527,6 +539,7 @@ require (
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/mail.v2 v2.3.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 	honnef.co/go/tools v0.6.1 // indirect
@@ -543,6 +556,7 @@ tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/goreleaser/goreleaser/v2
 	github.com/nishanths/license/v5
+	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 )
 
 exclude github.com/ugorji/go v1.1.4
