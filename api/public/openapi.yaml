@@ -1,0 +1,205 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: SShark Public API
+  description: API for searching and retrieving SSH public keys from various providers
+  contact:
+    name: API Support
+    url: https://sshark.app/doc
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+security: []
+
+paths:
+  /search/{query}:
+    get:
+      tags:
+        - Search
+      summary: Search SSH keys
+      description: |
+        Search SSH keys by query using RediSearch syntax.
+        Plain text queries are automatically converted to search username and key fields.
+        Supports field-specific queries like `@username:{user1}` or `@type:{ssh-ed25519}`.
+      operationId: searchKeys
+      parameters:
+        - name: query
+          in: path
+          required: true
+          description: |
+            Search query. Examples:
+            - Plain text: `merlindorin`
+            - Username field: `@username:{merlindorin}`
+            - Type field: `@type:{ssh-ed25519}`
+            - Provider field: `@provider:{github}`
+          schema:
+            type: string
+          example: merlindorin
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          required: false
+          description: Number of results to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Invalid query or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+              examples:
+                invalidQuery:
+                  summary: Invalid search query
+                  value:
+                    status: Bad Request
+                    status_code: 400
+                    error:
+                      code: INVALID_SEARCH_QUERY
+                      message: Not a valid search query
+                      details: "The search query `@invalid` is not valid"
+                      timestamp: "2024-01-17T00:00:00Z"
+                      path: "/api/v1/search/@invalid"
+                      suggestion: "You can use: merlindorin, @username:{merlindorin}, @type:{ssh-ed25519}"
+                    request_id: "550e8400-e29b-41d4-a716-446655440000"
+                    documentation_url: "https://sshark.app/doc"
+  /sshkeys/{id}:
+    get:
+      tags:
+        - SSH Keys
+      summary: Get SSH key by ID
+      description: Retrieve a specific SSH key by its UUID
+      operationId: getSSHKeyById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: SSH key UUID
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: SSH key details
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/SSHKey'
+        '400':
+          description: Invalid UUID format
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: SSH key not found or internal error
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+  /stats:
+    get:
+      tags:
+        - Statistics
+      summary: Get statistics
+      description: Get aggregated statistics about indexed SSH keys
+      operationId: getStats
+      responses:
+        '200':
+          description: Statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Statistics'
+        '500':
+          description: Statistics
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    SearchResponse:
+      type: object
+      required:
+        - entities
+        - total
+        - limit
+        - offset
+        - duration
+        - query
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: '../common/openapi.yaml#/components/schemas/SSHKey'
+          description: List of SSH keys matching the search query
+        total:
+          type: integer
+          description: Total number of results matching the query
+          example: 100
+        limit:
+          type: integer
+          description: Maximum number of results returned
+          example: 10
+        offset:
+          type: integer
+          description: Number of results skipped
+          example: 0
+        duration:
+          type: integer
+          description: Query execution duration in nanoseconds
+          example: 2154323
+        query:
+          type: string
+          description: The search query that was executed
+          example: "@username:{merlindorin}"
+
+    Statistics:
+      type: object
+      required:
+        - total_keys
+        - total_usernames
+        - total_providers
+      properties:
+        total_keys:
+          type: integer
+          description: Total number of SSH keys indexed
+          example: 1000
+        total_usernames:
+          type: integer
+          description: Total number of unique usernames
+          example: 500
+        total_providers:
+          type: integer
+          description: Total number of providers
+          example: 1
+
+tags:
+  - name: Search
+    description: Search SSH keys
+  - name: SSH Keys
+    description: SSH key operations
+  - name: Statistics
+    description: Aggregated statistics

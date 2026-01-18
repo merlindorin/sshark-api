@@ -1,0 +1,341 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: SShark API Authenticated
+  description: API for searching and retrieving SSH public keys from various providers
+  contact:
+    name: API Support
+    url: https://sshark.app/doc
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+security: []
+
+paths:
+  /me:
+    get:
+      tags:
+        - User
+      summary: Get authenticated user info
+      description: Get information about the authenticated user
+      operationId: getMe
+      security:
+        - ClerkAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to fetch user information
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/apikeys:
+    get:
+      tags:
+        - API Keys
+      summary: List API keys
+      description: List all API keys for the authenticated user
+      operationId: listApiKeys
+      security:
+        - ClerkAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - api_keys
+                properties:
+                  api_keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - API Keys
+      summary: Create API key
+      description: Create a new API key for the authenticated user
+      operationId: createApiKey
+      security:
+        - ClerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyWithSecret'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/apikeys/{id}:
+    delete:
+      tags:
+        - API Keys
+      summary: Delete API key
+      description: Delete an API key by ID
+      operationId: deleteApiKey
+      security:
+        - ClerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: API key ID
+          schema:
+            type: string
+            pattern: ^ak_[a-zA-Z0-9]+$
+          example: "ak_3beecc9c60adb5f9b850e91a8ee1e992"
+      responses:
+        '204':
+          description: API key deleted successfully
+        '400':
+          description: Invalid API key ID format
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ClerkAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Authentication via Clerk session token (JWT) or API key.
+        - Session token: JWT obtained from Clerk authentication
+        - API key: Secret key created via POST /me/apikeys (format: ak_*)
+
+  schemas:
+    UserInfo:
+      type: object
+      required:
+        - id
+        - created_at
+      properties:
+        id:
+          type: string
+          description: User ID
+          example: user_2abc123def456
+        email:
+          type: string
+          format: email
+          description: Primary email address
+          example: user@example.com
+        first_name:
+          type: string
+          description: User's first name
+          example: John
+        last_name:
+          type: string
+          description: User's last name
+          example: Doe
+        username:
+          type: string
+          description: Username
+          example: johndoe
+        image_url:
+          type: string
+          format: uri
+          description: Avatar URL
+          example: https://images.clerk.dev/...
+        created_at:
+          type: integer
+          format: int64
+          description: Unix timestamp of user creation
+          example: 1705449600
+
+    ApiKey:
+      type: object
+      required:
+        - object
+        - id
+        - type
+        - subject
+        - name
+        - revoked
+        - expired
+        - created_at
+        - updated_at
+      properties:
+        object:
+          type: string
+          enum:
+            - api_key
+          description: Object type identifier
+          example: api_key
+        id:
+          type: string
+          pattern: ^ak_[a-zA-Z0-9]+$
+          description: API key ID
+          example: ak_3beecc9c60adb5f9b850e91a8ee1e992
+        type:
+          type: string
+          enum:
+            - api_key
+          description: API key type
+          example: api_key
+        subject:
+          type: string
+          description: User ID associated with this API key
+          example: user_2xhFjEI5X2qWRvtV13BzSj8H6Dk
+        name:
+          type: string
+          description: API key name
+          example: MY_SERVICE_API_KEY
+        description:
+          type: string
+          description: API key description
+          example: This is my API Key
+        claims:
+          type: object
+          additionalProperties: true
+          description: Custom claims associated with the API key
+          example:
+            foo: bar
+        scopes:
+          type: array
+          items:
+            type: string
+          description: API key scopes
+          example:
+            - read
+            - write
+        revoked:
+          type: boolean
+          description: Whether the API key has been revoked
+          example: false
+        revocation_reason:
+          type: string
+          description: Reason for revocation if revoked
+          example: Revoked by user
+        expired:
+          type: boolean
+          description: Whether the API key has expired
+          example: false
+        expiration:
+          type: integer
+          format: int64
+          description: Unix timestamp of expiration
+          example: 1716883200
+        created_by:
+          type: string
+          description: User ID of the creator
+          example: user_2xhFjEI5X2qWRvtV13BzSj8H6Dk
+        last_used_at:
+          type: integer
+          format: int64
+          description: Unix timestamp of last use
+          example: 1716883200
+        created_at:
+          type: integer
+          format: int64
+          description: Unix timestamp of creation
+          example: 1716883200
+        updated_at:
+          type: integer
+          format: int64
+          description: Unix timestamp of last update
+          example: 1716883200
+
+    ApiKeyWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              description: API key secret (only returned on creation)
+              example: sk_test_ABC123XYZ456...
+
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: API key name
+          example: MY_SERVICE_API_KEY
+        description:
+          type: string
+          description: API key description
+          example: This is my API Key
+        claims:
+          type: object
+          additionalProperties: true
+          description: Custom claims to associate with the API key
+          example:
+            foo: bar
+        scopes:
+          type: array
+          items:
+            type: string
+          description: API key scopes
+          example:
+            - read
+            - write
+        expiration:
+          type: integer
+          format: int64
+          description: Unix timestamp of expiration (optional)
+          example: 1716883200
+
+tags:
+  - name: User
+    description: User information (authenticated)
+  - name: API Keys
+    description: API key management

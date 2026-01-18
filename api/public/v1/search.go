@@ -1,4 +1,4 @@
-package search
+package v1
 
 import (
 	"net/http"
@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/merlindorin/sshark-api/api/common"
+	"github.com/merlindorin/sshark-api/api/public"
+	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
 	"go.uber.org/zap"
 
-	"github.com/merlindorin/sshark-api/internal/api/apierrors"
-	"github.com/merlindorin/sshark-api/internal/domain/ingester"
-	"github.com/merlindorin/sshark-api/internal/domain/query"
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
 )
 
@@ -28,8 +28,8 @@ type SSHKeysURI struct {
 // Since all fields are TAGs, plain text queries like "merlindorin" must be
 // converted to TAG syntax searching both username and key fields with wildcard.
 // If the query already contains field syntax (@field:), it's returned as-is.
-func (receiver SSHKeysURI) BuildQuery() string {
-	q := strings.TrimSpace(receiver.Query)
+func BuildQuery(q string) string {
+	q = strings.TrimSpace(q)
 	if q == "" || q == "*" {
 		return "*"
 	}
@@ -75,8 +75,7 @@ func escapeTagQuery(s string) string {
 //   - Plain words: "merlindorin"
 //   - Field TEXT search: "@username:merlindorin"
 //   - Field TAG search: "@username_exact:{merlindorin}" or "@username_exact:{user1|user2}"
-func (receiver *SSHKeysURI) Usernames() []string {
-	q := receiver.Query
+func Usernames(q string) []string {
 	seen := make(map[string]struct{})
 	var usernames []string
 
@@ -144,71 +143,56 @@ type SSHKeysResponse struct {
 }
 
 func SSHKeys(
+	c *gin.Context,
 	logger *zap.Logger,
-	rSSHKeys sshkeys.Repository,
-	queryValidator query.Validator,
-	service *ingester.Service,
-) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		searchStart := time.Now()
+	repository *sshkeysrepository.Repository,
+	searchQuery string,
+	params public.SearchKeysParams,
+) {
+	ctx := c.Request.Context()
+	searchStart := time.Now()
 
-		uriParams := SSHKeysURI{}
-		err := c.BindUri(&uriParams)
-		if err != nil {
-			logger.Info("failed to bind URI", zap.Error(err))
-			_ = c.Error(apierrors.InvalidPathParamError(c))
-			return
-		}
-
-		queryParams := SSHKeysQuery{}
-		err = c.BindQuery(&queryParams)
-		if err != nil {
-			logger.Info("failed to bind query", zap.Error(err))
-			_ = c.Error(apierrors.InvalidQueryParamError(c, []string{"limit", "offset"}))
-			return
-		}
-
-		builtQuery := uriParams.BuildQuery()
-
-		_, err = queryValidator.ValidateQuery(c.Request.Context(), builtQuery)
-		if err != nil {
-			logger.Info("failed to validate query", zap.Error(err))
-			_ = c.Error(
-				apierrors.InvalidSearchQueryError(
-					c,
-					err,
-					uriParams.Query,
-					[]string{"merlindorin", "@username:{merlindorin}", "@type:{ssh-ed25519}"},
-				),
-			)
-			return
-		}
-
-		searchResult := sshkeys.NewSearchResult()
-
-		for _, username := range uriParams.Usernames() {
-			ingestErr := service.Ingest(ctx, username)
-			if ingestErr != nil {
-				logger.Error("failed to ingest username", zap.String("username", username), zap.Error(ingestErr))
-				continue
-			}
-		}
-
-		err = rSSHKeys.Search(c.Request.Context(), builtQuery, queryParams.Limit, queryParams.Offset, searchResult)
-		if err != nil {
-			logger.Error("failed to search query", zap.String("query", uriParams.Query), zap.Error(err))
-			_ = c.Error(apierrors.InternalError(c))
-			return
-		}
-
-		c.JSON(http.StatusOK, SSHKeysResponse{
-			Entities: searchResult.Entities,
-			Query:    builtQuery,
-			Total:    searchResult.Total,
-			Limit:    queryParams.Limit,
-			Offset:   queryParams.Offset,
-			Duration: time.Since(searchStart),
-		})
+	_, err := repository.ValidateQuery(ctx, searchQuery)
+	if err != nil {
+		logger.Info("failed to validate query", zap.Error(err))
+		_ = c.Error(
+			common.InvalidSearchQueryError(
+				c,
+				err,
+				searchQuery,
+				[]string{"merlindorin", "@username:{merlindorin}", "@type:{ssh-ed25519}"},
+			),
+		)
+		return
 	}
+
+	searchResult := []common.SSHKey{}
+
+	total, err := repository.Search(ctx, searchQuery, params.Limit, params.Offset, func(entity *sshkeys.Entity) {
+		searchResult = append(searchResult, common.SSHKey{
+			Comment:   &entity.Comment,
+			Id:        entity.ID,
+			Key:       entity.Key,
+			Options:   &entity.Options,
+			Provider:  entity.Provider,
+			Source:    entity.Source,
+			Type:      common.SSHKeyType(entity.Type),
+			UpdatedAt: entity.UpdatedAt,
+			Username:  entity.Username,
+		})
+	})
+	if err != nil {
+		logger.Error("failed to search query", zap.String("query", searchQuery), zap.Error(err))
+		_ = c.Error(common.InternalError(c))
+		return
+	}
+
+	c.JSON(http.StatusOK, public.SearchResponse{
+		Entities: searchResult,
+		Query:    searchQuery,
+		Total:    total,
+		Limit:    *params.Limit,
+		Offset:   *params.Offset,
+		Duration: int(time.Since(searchStart).Nanoseconds()),
+	})
 }

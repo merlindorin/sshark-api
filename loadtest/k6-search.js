@@ -34,7 +34,7 @@ export const options = {
 };
 
 // Load GitHub usernames from file (5,800 real usernames)
-const ALL_USERNAMES = open('./github_users.txt').trim().split('\n');
+const ALL_USERNAMES = open('./users.txt').trim().split('\n');
 
 // Build query string for N usernames
 function buildQuery(usernames) {

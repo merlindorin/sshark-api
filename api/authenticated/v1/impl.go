@@ -1,0 +1,161 @@
+package v1
+
+import (
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"github.com/clerk/clerk-sdk-go/v2"
+	"github.com/clerk/clerk-sdk-go/v2/apikey"
+	"github.com/gin-gonic/gin"
+	"github.com/merlindorin/sshark-api/api/authenticated"
+	"go.uber.org/zap"
+)
+
+type Server struct {
+	logger *zap.Logger
+}
+
+//nolint:revive // method name from generated interface
+func (s Server) ListApiKeys(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	claims, ok := clerk.SessionClaimsFromContext(ctx)
+	if !ok {
+		s.logger.Error("failed to get user claims")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	params := &apikey.ListParams{
+		Subject: &claims.Subject,
+	}
+
+	keyList, err := apikey.List(ctx, params)
+	if err != nil {
+		s.logger.Error("failed to list API keys", zap.Error(err))
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to list API keys"})
+		return
+	}
+
+	response := gin.H{
+		"api_keys": keyList.APIKeys,
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+//nolint:revive // method name from generated interface
+func (s Server) CreateApiKey(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	claims, ok := clerk.SessionClaimsFromContext(ctx)
+	if !ok {
+		s.logger.Error("failed to get user claims")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req authenticated.CreateApiKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.logger.Error("failed to parse request body", zap.Error(err))
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	params := &apikey.CreateParams{
+		Subject: &claims.Subject,
+		Name:    &req.Name,
+	}
+
+	if req.Description != nil {
+		params.Description = req.Description
+	}
+
+	if req.Claims != nil {
+		claimsJSON, err := json.Marshal(req.Claims)
+		if err != nil {
+			s.logger.Error("failed to marshal claims", zap.Error(err))
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid claims format"})
+			return
+		}
+		params.Claims = claimsJSON
+	}
+
+	if req.Scopes != nil {
+		params.Scopes = *req.Scopes
+	}
+
+	if req.Expiration != nil {
+		secondsUntilExpiration := *req.Expiration - time.Now().Unix()
+		if secondsUntilExpiration < 0 {
+			s.logger.Error("expiration time is in the past")
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "expiration time must be in the future"})
+			return
+		}
+		params.SecondsUntilExpiration = &secondsUntilExpiration
+	}
+
+	key, err := apikey.Create(ctx, params)
+	if err != nil {
+		s.logger.Error("failed to create API key", zap.Error(err))
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to create API key"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, key)
+}
+
+//nolint:revive // method name from generated interface
+func (s Server) DeleteApiKey(c *gin.Context, id string) {
+	ctx := c.Request.Context()
+
+	claims, ok := clerk.SessionClaimsFromContext(ctx)
+	if !ok {
+		s.logger.Error("failed to get user claims")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	keyList, err := apikey.List(ctx, &apikey.ListParams{
+		Subject: &claims.Subject,
+	})
+	if err != nil {
+		s.logger.Error("failed to list API keys", zap.Error(err))
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to verify API key ownership"})
+		return
+	}
+
+	var keyExists bool
+	for _, key := range keyList.APIKeys {
+		if key.ID == id {
+			keyExists = true
+			break
+		}
+	}
+
+	if !keyExists {
+		s.logger.Error("API key not found or doesn't belong to user", zap.String("key_id", id))
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "API key not found"})
+		return
+	}
+
+	_, err = apikey.Delete(ctx, id)
+	if err != nil {
+		s.logger.Error("failed to delete API key", zap.Error(err), zap.String("key_id", id))
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to delete API key"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func NewServer(logger *zap.Logger) *Server {
+	return &Server{
+		logger: logger,
+	}
+}
+
+func (s Server) GetMe(c *gin.Context) {
+	Me(c, s.logger)
+}

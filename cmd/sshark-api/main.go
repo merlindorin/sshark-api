@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 
 	"github.com/alecthomas/kong"
@@ -8,6 +9,7 @@ import (
 	c "github.com/merlindorin/go-shared/pkg/cmd"
 
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/commands"
+	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
 )
 
 const (
@@ -15,7 +17,7 @@ const (
 	description = "SSH public key lookup API"
 )
 
-//nolint:gochecknoglobals // these global variables exist to be overridden during build
+//nolint:gochecknoglobals // these globals variables exist to be overridden during build
 var (
 	license string
 
@@ -31,6 +33,7 @@ func main() {
 			Version: c.NewVersion(name, version, commit, buildSource, date),
 			Licence: c.NewLicence(license),
 		},
+		Redis: &globals.Redis{},
 		Serve: &commands.Serve{},
 	}
 
@@ -42,10 +45,13 @@ func main() {
 		kong.Configuration(kongyaml.Loader, "/etc/sshark/config.yaml", "~/.config/sshark/config.yaml"),
 	)
 
-	ctx.FatalIfErrorf(ctx.Run(cli.Commons))
+	ctx.BindTo(context.Background(), (*context.Context)(nil))
+	ctx.FatalIfErrorf(ctx.Run(cli.Commons, cli.Redis))
 }
 
 type CMD struct {
 	*c.Commons
-	Serve *commands.Serve `cmd:"" help:"Start the API server"`
+	*globals.Redis `embed:"" prefix:"redis-"`
+	Serve          *commands.Serve   `cmd:"" help:"Start the API server"`
+	Migrate        *commands.Migrate `cmd:"" help:"Migrate the database"`
 }

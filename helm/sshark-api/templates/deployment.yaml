@@ -32,6 +32,35 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: {{ .Chart.Name }}-migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - migrate
+          env:
+            - name: REDIS_HOST
+              {{- if .Values.dragonfly.enabled }}
+              value: "{{ include "sshark-api.fullname" . }}-dragonfly"
+              {{- else if index .Values "redis-stack" "enabled" }}
+              value: "redis-stack"
+              {{- else }}
+              value: {{ .Values.redis.host | quote }}
+              {{- end }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: REDIS_DB
+              value: {{ .Values.redis.db | quote }}
+            {{- if .Values.redis.existingSecret }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.existingSecret }}
+                  key: {{ .Values.redis.existingSecretPasswordKey }}
+            {{- else if .Values.redis.password }}
+            - name: REDIS_PASSWORD
+              value: {{ .Values.redis.password | quote }}
+            {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.securityContext }}

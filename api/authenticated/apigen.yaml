@@ -1,0 +1,12 @@
+package: authenticated
+generate:
+  gin-server: true
+  models: true
+  server-urls: true
+output-options:
+  # to make sure that all types are generated
+  skip-prune: true
+output: server.gen.go
+
+import-mapping:
+  ../common/openapi.yaml: github.com/merlindorin/sshark-api/api/common

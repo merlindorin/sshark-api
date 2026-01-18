@@ -1,4 +1,5 @@
-package apierrors
+//nolint:revive // api is appropriate for API error handling
+package api
 
 import (
 	"net/http"
@@ -38,6 +39,7 @@ func NewDetailedError(c *gin.Context, code string, message string, details strin
 	}
 }
 
+//nolint:revive // APIError clearly indicates this is an API-level error
 type APIError struct {
 	Status           string         `json:"status"`
 	StatusCode       int            `json:"status_code"`
