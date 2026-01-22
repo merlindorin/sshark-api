@@ -14,29 +14,54 @@ servers:
 security: []
 
 paths:
-  /search/{query}:
+  /search:
     get:
       tags:
         - Search
       summary: Search SSH keys
       description: |
         Search SSH keys by query using RediSearch syntax.
-        Plain text queries are automatically converted to search username and key fields.
-        Supports field-specific queries like `@username:{user1}` or `@type:{ssh-ed25519}`.
+        In basic mode, plain text queries are automatically converted to search specified fields.
+        In advanced mode, the query must be compatible with Redis query format and supports field-specific queries like `@username:{user1}` or `@type:{ssh-ed25519}`.
       operationId: searchKeys
       parameters:
         - name: query
-          in: path
+          in: query
           required: true
           description: |
-            Search query. Examples:
-            - Plain text: `merlindorin`
-            - Username field: `@username:{merlindorin}`
-            - Type field: `@type:{ssh-ed25519}`
-            - Provider field: `@provider:{github}`
+            Search query.
+            In basic mode: plain text search (e.g., `merlindorin`)
+            In advanced mode: Redis-compatible query syntax (e.g., `@username:{merlindorin}`, `@type:{ssh-ed25519}`, `@provider:{github}`)
           schema:
             type: string
           example: merlindorin
+        - name: fields
+          in: query
+          required: false
+          description: |
+            List of fields to search in (used in basic mode).
+            Available fields: key, username, provider, type
+            Default: all fields
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - key
+                - username
+                - provider
+                - type
+            default: [key, username, provider, type]
+          example: [username, provider]
+        - name: advanced
+          in: query
+          required: false
+          description: Enable advanced mode for Redis-compatible query syntax
+          schema:
+            type: boolean
+            default: false
         - name: limit
           in: query
           required: false
@@ -78,8 +103,8 @@ paths:
                       message: Not a valid search query
                       details: "The search query `@invalid` is not valid"
                       timestamp: "2024-01-17T00:00:00Z"
-                      path: "/api/v1/search/@invalid"
-                      suggestion: "You can use: merlindorin, @username:{merlindorin}, @type:{ssh-ed25519}"
+                      path: "/api/v1/search?query=@invalid&advanced=true"
+                      suggestion: "You can use: merlindorin (basic mode), or @username:{merlindorin}, @type:{ssh-ed25519} (advanced mode)"
                     request_id: "550e8400-e29b-41d4-a716-446655440000"
                     documentation_url: "https://sshark.app/doc"
   /sshkeys/{id}:

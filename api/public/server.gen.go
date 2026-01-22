@@ -16,6 +16,14 @@ import (
 // ServerUrlAPIV1 defines the Server URL for API v1
 const ServerUrlAPIV1 = "/api/v1"
 
+// Defines values for SearchKeysParamsFields.
+const (
+	Key      SearchKeysParamsFields = "key"
+	Provider SearchKeysParamsFields = "provider"
+	Type     SearchKeysParamsFields = "type"
+	Username SearchKeysParamsFields = "username"
+)
+
 // SearchResponse defines model for SearchResponse.
 type SearchResponse struct {
 	// Duration Query execution duration in nanoseconds
@@ -51,6 +59,19 @@ type Statistics struct {
 
 // SearchKeysParams defines parameters for SearchKeys.
 type SearchKeysParams struct {
+	// Query Search query.
+	// In basic mode: plain text search (e.g., `merlindorin`)
+	// In advanced mode: Redis-compatible query syntax (e.g., `@username:{merlindorin}`, `@type:{ssh-ed25519}`, `@provider:{github}`)
+	Query string `form:"query" json:"query"`
+
+	// Fields List of fields to search in (used in basic mode).
+	// Available fields: key, username, provider, type
+	// Default: all fields
+	Fields *[]SearchKeysParamsFields `form:"fields,omitempty" json:"fields,omitempty"`
+
+	// Advanced Enable advanced mode for Redis-compatible query syntax
+	Advanced *bool `form:"advanced,omitempty" json:"advanced,omitempty"`
+
 	// Limit Maximum number of results to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -58,11 +79,14 @@ type SearchKeysParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// SearchKeysParamsFields defines parameters for SearchKeys.
+type SearchKeysParamsFields string
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Search SSH keys
-	// (GET /search/{query})
-	SearchKeys(c *gin.Context, query string, params SearchKeysParams)
+	// (GET /search)
+	SearchKeys(c *gin.Context, params SearchKeysParams)
 	// Get SSH key by ID
 	// (GET /sshkeys/{id})
 	GetSSHKeyById(c *gin.Context, id openapi_types.UUID)
@@ -85,17 +109,39 @@ func (siw *ServerInterfaceWrapper) SearchKeys(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "query" -------------
-	var query string
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchKeysParams
 
-	err = runtime.BindStyledParameterWithOptions("simple", "query", c.Param("query"), &query, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	// ------------- Required query parameter "query" -------------
+
+	if paramValue := c.Query("query"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument query is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "query", c.Request.URL.Query(), &params.Query)
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter query: %w", err), http.StatusBadRequest)
 		return
 	}
 
-	// Parameter object where we will unmarshal all parameters from the context
-	var params SearchKeysParams
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameter("form", false, false, "fields", c.Request.URL.Query(), &params.Fields)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter fields: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "advanced" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "advanced", c.Request.URL.Query(), &params.Advanced)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter advanced: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	// ------------- Optional query parameter "limit" -------------
 
@@ -120,7 +166,7 @@ func (siw *ServerInterfaceWrapper) SearchKeys(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.SearchKeys(c, query, params)
+	siw.Handler.SearchKeys(c, params)
 }
 
 // GetSSHKeyById operation middleware
@@ -187,7 +233,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.GET(options.BaseURL+"/search/:query", wrapper.SearchKeys)
+	router.GET(options.BaseURL+"/search", wrapper.SearchKeys)
 	router.GET(options.BaseURL+"/sshkeys/:id", wrapper.GetSSHKeyById)
 	router.GET(options.BaseURL+"/stats", wrapper.GetStats)
 }

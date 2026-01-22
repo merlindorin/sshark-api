@@ -15,8 +15,8 @@ type Server struct {
 	ingesterService *ingester.Service
 }
 
-func (s Server) SearchKeys(c *gin.Context, query string, params public.SearchKeysParams) {
-	SSHKeys(c, s.logger, s.repository, query, params)
+func (s Server) SearchKeys(c *gin.Context, params public.SearchKeysParams) {
+	SSHKeys(c, s.logger, s.repository, params)
 }
 
 //nolint:revive // method name from generated interface

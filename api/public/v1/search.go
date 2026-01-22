@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -142,24 +143,50 @@ type SSHKeysResponse struct {
 	Query    string           `json:"query"`
 }
 
+func defaultValue[T any](value *T, defaultValue T) T {
+	if value == nil {
+		return defaultValue
+	}
+
+	return *value
+}
+
 func SSHKeys(
 	c *gin.Context,
 	logger *zap.Logger,
 	repository *sshkeysrepository.Repository,
-	searchQuery string,
 	params public.SearchKeysParams,
 ) {
 	ctx := c.Request.Context()
 	searchStart := time.Now()
 
-	_, err := repository.ValidateQuery(ctx, searchQuery)
+	query := strings.TrimSpace(params.Query)
+	limit := defaultValue(params.Limit, 10)
+	offset := defaultValue(params.Offset, 0)
+	advanced := defaultValue(params.Advanced, false)
+	fields := defaultValue(params.Fields, []public.SearchKeysParamsFields{
+		public.Key, public.Provider, public.Type, public.Username,
+	})
+
+	if !advanced {
+		query = ""
+
+		for i, field := range fields {
+			if i > 0 {
+				query += " OR "
+			}
+			query += fmt.Sprintf("@%s:{%s}", field, params.Query)
+		}
+	}
+
+	_, err := repository.ValidateQuery(ctx, query)
 	if err != nil {
 		logger.Info("failed to validate query", zap.Error(err))
 		_ = c.Error(
 			common.InvalidSearchQueryError(
 				c,
 				err,
-				searchQuery,
+				query,
 				[]string{"merlindorin", "@username:{merlindorin}", "@type:{ssh-ed25519}"},
 			),
 		)
@@ -168,7 +195,7 @@ func SSHKeys(
 
 	searchResult := []common.SSHKey{}
 
-	total, err := repository.Search(ctx, searchQuery, params.Limit, params.Offset, func(entity *sshkeys.Entity) {
+	total, err := repository.Search(ctx, query, limit, offset, func(entity *sshkeys.Entity) {
 		searchResult = append(searchResult, common.SSHKey{
 			Comment:   &entity.Comment,
 			Id:        entity.ID,
@@ -182,17 +209,17 @@ func SSHKeys(
 		})
 	})
 	if err != nil {
-		logger.Error("failed to search query", zap.String("query", searchQuery), zap.Error(err))
+		logger.Error("failed to search query", zap.String("query", query), zap.Error(err))
 		_ = c.Error(common.InternalError(c))
 		return
 	}
 
 	c.JSON(http.StatusOK, public.SearchResponse{
 		Entities: searchResult,
-		Query:    searchQuery,
+		Query:    query,
 		Total:    total,
-		Limit:    *params.Limit,
-		Offset:   *params.Offset,
+		Limit:    limit,
+		Offset:   offset,
 		Duration: int(time.Since(searchStart).Nanoseconds()),
 	})
 }

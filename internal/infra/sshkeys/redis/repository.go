@@ -54,12 +54,12 @@ type QuerySearch struct {
 func (r Repository) Search(
 	ctx context.Context,
 	search string,
-	limit, offset *int,
+	limit, offset int,
 	callback func(entity *sshkeys.Entity),
 ) (total int, err error) {
 	searchOptions := &redis.FTSearchOptions{
-		Limit:       *limit,
-		LimitOffset: *offset,
+		Limit:       limit,
+		LimitOffset: offset,
 	}
 
 	raw, err := r.rdb.FTSearchWithArgs(ctx, fmt.Sprintf("idx:%s", r.indexKey), search, searchOptions).RawResult()
