@@ -1,11 +1,12 @@
 version: '3'
 
 includes:
-    install: .tk/install/Taskfile.yaml
+    claude: .tk/claude/Taskfile.yaml
     default: .tk/default/Taskfile.yaml
     git: .tk/git/Taskfile.yaml
     golangci: .tk/golangci/Taskfile.yaml
     goreleaser: .tk/goreleaser/Taskfile.yaml
+    install: .tk/install/Taskfile.yaml
     license: .tk/license/Taskfile.yaml
     
 
@@ -13,7 +14,3 @@ dotenv:
   - .env
   - PROJECT
   - .env.default
-
-tasks:
-  generate:
-    cmd: go generate ./...
