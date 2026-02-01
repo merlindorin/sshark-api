@@ -4,6 +4,12 @@ metadata:
   name: {{ include "sshark-api.fullname" . }}
   labels:
     {{- include "sshark-api.labels" . | nindent 4 }}
+  {{- if .Values.metrics.enabled }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: {{ .Values.metrics.path }}
+    prometheus.io/port: {{ .Values.service.port | quote }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
   ports:

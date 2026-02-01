@@ -24,7 +24,11 @@ import (
 	v1 "github.com/merlindorin/sshark-api/api/public/v1"
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 	"github.com/merlindorin/sshark-api/internal/middleware"
+	"github.com/merlindorin/sshark-api/internal/otel"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
 )
 
@@ -41,7 +45,7 @@ func (s *Serve) Addr() string {
 	return fmt.Sprintf("%s:%d", s.Host, s.Port)
 }
 
-func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis) error {
+func (s *Serve) Run(ctx context.Context, common *cmd.Commons, redis *globals.Redis) error {
 	logger := common.MustLogger().Named("server")
 
 	logger.Info(
@@ -54,6 +58,20 @@ func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis
 		zap.String("gin.version", gin.Version),
 	)
 
+	meterProvider, err := otel.InitMeterProvider("sshark-api", common.Version.Version())
+	if err != nil {
+		return fmt.Errorf("failed to initialize meter provider: %w", err)
+	}
+	defer func() {
+		if shutdownErr := meterProvider.Shutdown(context.Background()); shutdownErr != nil {
+			logger.Error("failed to shutdown meter provider", zap.Error(shutdownErr))
+		}
+	}()
+
+	if err = metrics.InitMetrics(); err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
+	}
+
 	redisClient := redis.Client()
 	clerk.SetKey(s.ClerkToken)
 
@@ -62,6 +80,7 @@ func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis
 	}
 
 	r := gin.New()
+	r.Use(otelgin.Middleware("sshark-api"))
 	r.Use(timeout.New(timeout.WithTimeout(s.Timeout)))
 	r.Use(requestid.New())
 	r.Use(ginzap.Ginzap(logger, time.RFC3339, true))
@@ -69,6 +88,13 @@ func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis
 	r.Use(middleware.ErrorHandler(logger))
 
 	srepo := sshkeysrepository.NewRedisRepository(redisClient)
+
+	collector := metrics.NewCollector(srepo, logger.Named("metrics"), 30*time.Second)
+	if err = collector.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start metrics collector: %w", err)
+	}
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	requireAuthMiddleware := middleware.RequireAuth()
 
