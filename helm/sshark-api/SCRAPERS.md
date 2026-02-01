@@ -22,7 +22,7 @@ scrapers:
 
   gitlab:
     enabled: false
-    rateLimit: 5.0
+    rateLimit: 1.0
     batchSize: 100
     token: ""
     existingSecret: ""
@@ -129,7 +129,7 @@ scrapers:
 
   gitlab:
     enabled: true
-    rateLimit: 5.0
+    rateLimit: 1.0
     batchSize: 100
     existingSecret: "gitlab-token"
 ```
@@ -143,7 +143,7 @@ scrapers:
 
   gitlab:
     enabled: true
-    rateLimit: 10.0
+    rateLimit: 1.0
     batchSize: 200
     existingSecret: "gitlab-token"
     resources:
@@ -204,7 +204,7 @@ Default rate limits are conservative to avoid hitting API limits:
 | Provider | Default Rate | API Limit | Recommended |
 |----------|-------------|-----------|-------------|
 | GitHub   | 2.0 req/s   | 60 req/h (unauth) | 2.0 req/s |
-| GitLab   | 5.0 req/s   | 600 req/min (auth) | 5.0-10.0 req/s |
+| GitLab   | 1.0 req/s   | 120 req/min (auth) | 1.0 req/s |
 
 Adjust based on your quota and needs:
 
@@ -214,7 +214,7 @@ scrapers:
     rateLimit: 1.0  # Slower, more conservative
 
   gitlab:
-    rateLimit: 10.0  # Faster, uses more quota
+    rateLimit: 1.0  # At GitLab's 120/min limit
 ```
 
 ## Troubleshooting

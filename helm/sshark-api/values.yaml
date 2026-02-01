@@ -166,7 +166,7 @@ scrapers:
 
   gitlab:
     enabled: false
-    rateLimit: 5.0
+    rateLimit: 1.0
     batchSize: 100
     # GitLab API token (required if enabled)
     # If set, a secret will be automatically created.
