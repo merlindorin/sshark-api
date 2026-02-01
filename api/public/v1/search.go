@@ -199,7 +199,7 @@ func SSHKeys(
 
 		for i, field := range fields {
 			if i > 0 {
-				query += " OR "
+				query += " | "
 			}
 			query += fmt.Sprintf("@%s:{%s}", field, escapedQuery)
 		}
