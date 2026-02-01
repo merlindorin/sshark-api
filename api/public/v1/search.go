@@ -71,6 +71,31 @@ func escapeTagQuery(s string) string {
 	return s
 }
 
+// escapeAdvancedQuery escapes TAG field values in advanced queries.
+// Finds patterns like @field:{value} and escapes special chars in value.
+func escapeAdvancedQuery(query string) string {
+	// Pattern to match TAG queries: @field:{content}
+	// Captures field name and content inside braces
+	tagPattern := regexp.MustCompile(`@(\w+):\{([^}]*)\}`)
+
+	return tagPattern.ReplaceAllStringFunc(query, func(match string) string {
+		// Extract field and value from the match
+		parts := tagPattern.FindStringSubmatch(match)
+		if len(parts) != 3 {
+			return match
+		}
+
+		field := parts[1]
+		value := parts[2]
+
+		// Escape the value
+		escapedValue := escapeTagQuery(value)
+
+		// Reconstruct the TAG query
+		return fmt.Sprintf("@%s:{%s}", field, escapedValue)
+	})
+}
+
 // Usernames extracts usernames from the search query.
 // It looks for usernames in:
 //   - Plain words: "merlindorin"
@@ -178,6 +203,9 @@ func SSHKeys(
 			}
 			query += fmt.Sprintf("@%s:{%s}", field, escapedQuery)
 		}
+	} else {
+		// Escape TAG field values in advanced queries
+		query = escapeAdvancedQuery(query)
 	}
 
 	_, err := repository.ValidateQuery(ctx, query)
