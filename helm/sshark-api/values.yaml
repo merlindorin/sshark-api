@@ -148,7 +148,7 @@ affinity: {}
 # Each provider can have its own scraper deployment
 scrapers:
   github:
-    enabled: true
+    enabled: false
     rateLimit: 2.0
     batchSize: 100
     podAnnotations: {}
