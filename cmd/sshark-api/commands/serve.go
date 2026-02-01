@@ -23,9 +23,6 @@ import (
 	"github.com/merlindorin/sshark-api/api/public"
 	v1 "github.com/merlindorin/sshark-api/api/public/v1"
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
-	"github.com/merlindorin/sshark-api/internal/domain/ingester"
-	"github.com/merlindorin/sshark-api/internal/infra/github"
-	githubrepository "github.com/merlindorin/sshark-api/internal/infra/github/redis"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
 	"github.com/merlindorin/sshark-api/internal/middleware"
 	"go.uber.org/zap"
@@ -71,15 +68,12 @@ func (s *Serve) Run(_ context.Context, common *cmd.Commons, redis *globals.Redis
 	r.Use(ginzap.RecoveryWithZap(logger, true))
 	r.Use(middleware.ErrorHandler(logger))
 
-	cl := github.NewFetcher(logger)
 	srepo := sshkeysrepository.NewRedisRepository(redisClient)
-	grepo := githubrepository.NewRepository(redisClient)
-	service := ingester.New(grepo, srepo, cl)
 
 	requireAuthMiddleware := middleware.RequireAuth()
 
 	private.RegisterHandlers(r, v3.NewServer(logger.Named("internal api")))
-	public.RegisterHandlers(r.Group("/api/v1"), v1.NewServer(logger.Named("public api"), srepo, service))
+	public.RegisterHandlers(r.Group("/api/v1"), v1.NewServer(logger.Named("public api"), srepo))
 	authenticated.RegisterHandlers(
 		r.Group("/api/v1", requireAuthMiddleware),
 		v2.NewServer(logger.Named("authenticated api")),

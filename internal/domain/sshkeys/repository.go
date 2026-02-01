@@ -2,10 +2,9 @@ package sshkeys
 
 import (
 	"context"
+	"io"
 
 	"github.com/google/uuid"
-
-	"github.com/merlindorin/sshark-api/internal/domain/github"
 )
 
 // SearchResult holds the results of an SSH key search operation.
@@ -27,6 +26,13 @@ type ListResult struct {
 	Total    int
 }
 
+// AuthorizedKeys holds SSH public keys data from any provider.
+type AuthorizedKeys struct {
+	Username string
+	Source   string
+	Keys     io.ReadWriter
+}
+
 // Repository defines the interface for SSH key persistence operations.
 type Repository interface {
 	// Search finds SSH keys matching the search term with pagination.
@@ -42,5 +48,10 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// CreateFromAuthorizedKeys parses authorized_keys data and creates SSH key entities.
-	CreateFromAuthorizedKeys(ctx context.Context, authorizedKeys *github.AuthorizedKeys, entities *[]Entity) error
+	CreateFromAuthorizedKeys(
+		ctx context.Context,
+		authorizedKeys *AuthorizedKeys,
+		provider string,
+		entities *[]Entity,
+	) error
 }

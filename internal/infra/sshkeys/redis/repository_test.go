@@ -10,7 +10,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/merlindorin/sshark-api/internal/domain/github"
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
 	"github.com/merlindorin/sshark-api/internal/domain/stats"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
@@ -32,7 +31,7 @@ func TestRepository_CreateFromAuthorizedKeys(t *testing.T) {
 	t.Run("create", func(t *testing.T) {
 		entities := []sshkeys.Entity{}
 
-		authorizedKeys := &github.AuthorizedKeys{
+		authorizedKeys := &sshkeys.AuthorizedKeys{
 			Username: "merlin",
 			Keys:     bytes.NewBufferString("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPYhndfr5o7SYHYpsoUtUvDGpiHqNy57Z2MqZqqI1iWZ"),
 			Source:   "https://github.com/merlindorin.keys",
@@ -40,6 +39,7 @@ func TestRepository_CreateFromAuthorizedKeys(t *testing.T) {
 		err := r.CreateFromAuthorizedKeys(
 			t.Context(),
 			authorizedKeys,
+			"github",
 			&entities,
 		)
 		if err != nil {

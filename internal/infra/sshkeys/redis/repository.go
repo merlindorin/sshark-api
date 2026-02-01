@@ -12,7 +12,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/merlindorin/sshark-api/internal/domain/github"
 	"github.com/merlindorin/sshark-api/internal/domain/sshkeys"
 	"github.com/merlindorin/sshark-api/internal/domain/stats"
 	"github.com/merlindorin/sshark-api/internal/infra"
@@ -112,7 +111,8 @@ func (r Repository) List(ctx context.Context, limit, offset *int, result *sshkey
 
 func (r Repository) CreateFromAuthorizedKeys(
 	ctx context.Context,
-	authorizedKeys *github.AuthorizedKeys,
+	authorizedKeys *sshkeys.AuthorizedKeys,
+	provider string,
 	entities *[]sshkeys.Entity,
 ) error {
 	all, err := io.ReadAll(authorizedKeys.Keys)
@@ -135,9 +135,9 @@ func (r Repository) CreateFromAuthorizedKeys(
 		}
 
 		sshkey := sshkeys.Entity{
-			Username: authorizedKeys.Username.String(),
+			Username: authorizedKeys.Username,
 			Source:   authorizedKeys.Source,
-			Provider: "github",
+			Provider: provider,
 			Type:     key.Type(),
 			Comment:  comment,
 			Options:  option,
