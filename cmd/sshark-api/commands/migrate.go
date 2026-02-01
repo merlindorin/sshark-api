@@ -49,5 +49,14 @@ func (s *Migrate) Run(ctx context.Context, common *cmd.Commons, redis *globals.R
 		return fmt.Errorf("failed to ensure GitLab users index: %w", err)
 	}
 
+	logger.Info("Initializing stats counters...")
+	err = srepo.InitializeStatsCounters(ctx)
+	if err != nil {
+		logger.Warn("Failed to initialize stats counters", zap.Error(err))
+		// Don't fail migration if stats initialization fails
+	} else {
+		logger.Info("Stats counters initialized successfully")
+	}
+
 	return nil
 }

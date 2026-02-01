@@ -22,6 +22,12 @@ const (
 	indexKey         = "sshkey"
 	indexName        = "idx:sshkey"
 	defaultSortField = "updated_at"
+
+	// Stats counter keys.
+	statsKeyTotalKeys   = "sshark:stats:total_keys"
+	statsKeyUsernames   = "sshark:stats:usernames"
+	statsKeyProviders   = "sshark:stats:providers"
+	statsKeyInitialized = "sshark:stats:initialized"
 )
 
 type Repository struct {
@@ -186,6 +192,10 @@ func (r Repository) Delete(ctx context.Context, id uuid.UUID) error {
 		return sshkeys.ErrSSHKeyNotFound
 	}
 
+	// Update stats counter (decrement total keys)
+	// Note: We keep username and provider sets as they may still have other keys
+	_ = r.rdb.Decr(ctx, statsKeyTotalKeys).Err() // Ignore error to not fail deletion
+
 	return nil
 }
 
@@ -247,34 +257,107 @@ func (r Repository) SSHKeyCount(ctx context.Context) (int, error) {
 	return parseAggregateTotal(keysResult), nil
 }
 
-// GetStats retrieves aggregated statistics about SSH keys.
+// GetStats retrieves aggregated statistics about SSH keys using fast counter reads.
+// This method reads from pre-computed counters maintained by Create/Delete operations.
 func (r Repository) GetStats(ctx context.Context, result *stats.Stats) error {
-	keysResult, err := r.rdb.Do(ctx,
-		"FT.AGGREGATE", indexName, "*", "GROUPBY", "1", "@key", "GROUPBY", "0", "REDUCE", "COUNT", "0", "as", "count",
-	).Result()
-	if err != nil {
-		return fmt.Errorf("failed to get total keys: %w", err)
+	// Use pipeline for parallel reads
+	pipe := r.rdb.Pipeline()
+	totalKeysCmd := pipe.Get(ctx, statsKeyTotalKeys)
+	usernamesCmd := pipe.SCard(ctx, statsKeyUsernames)
+	providersCmd := pipe.SCard(ctx, statsKeyProviders)
+
+	_, err := pipe.Exec(ctx)
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return fmt.Errorf("failed to get stats: %w", err)
 	}
 
-	result.TotalKeys = parseAggregateTotal(keysResult)
+	// Parse total keys (default to 0 if not found)
+	totalKeys, _ := totalKeysCmd.Int()
+	result.TotalKeys = totalKeys
 
-	usernameResult, err := r.rdb.Do(ctx,
-		"FT.AGGREGATE", indexName, "*", "GROUPBY", "1", "@username", "GROUPBY", "0", "REDUCE", "COUNT", "0", "as", "count",
-	).Result()
+	// Parse unique usernames count
+	result.TotalUsernames = int(usernamesCmd.Val())
+
+	// Parse unique providers count
+	result.TotalProviders = int(providersCmd.Val())
+
+	return nil
+}
+
+// InitializeStatsCounters performs a one-time initialization of stats counters
+// by scanning existing SSH keys. This is idempotent and safe to run multiple times.
+func (r Repository) InitializeStatsCounters(ctx context.Context) error {
+	// Check if already initialized
+	exists, err := r.rdb.Exists(ctx, statsKeyInitialized).Result()
 	if err != nil {
-		return fmt.Errorf("failed to get unique usernames: %w", err)
+		return fmt.Errorf("failed to check initialization status: %w", err)
+	}
+	if exists > 0 {
+		return nil // Already initialized, skip
 	}
 
-	result.TotalUsernames = parseAggregateTotal(usernameResult)
-
-	providerResult, err := r.rdb.Do(ctx,
-		"FT.AGGREGATE", indexName, "*", "GROUPBY", "1", "@provider", "GROUPBY", "0", "REDUCE", "COUNT", "0", "as", "count",
+	// Use FT.AGGREGATE to get total count (faster than scanning)
+	totalResult, err := r.rdb.Do(ctx,
+		"FT.AGGREGATE", indexName, "*",
+		"GROUPBY", "0",
+		"REDUCE", "COUNT", "0", "AS", "total",
 	).Result()
 	if err != nil {
-		return fmt.Errorf("failed to get unique providers: %w", err)
+		return fmt.Errorf("failed to count total keys: %w", err)
 	}
 
-	result.TotalProviders = parseAggregateTotal(providerResult)
+	totalKeys := parseAggregateTotal(totalResult)
+
+	// Get distinct username values using FT.AGGREGATE
+	usernamesRaw, err := r.rdb.Do(ctx,
+		"FT.AGGREGATE", indexName, "*",
+		"GROUPBY", "1", "@username",
+		"LIMIT", "0", "10000", // Limit to first 10k usernames
+	).Result()
+	if err != nil {
+		return fmt.Errorf("failed to get usernames: %w", err)
+	}
+
+	providersRaw, err := r.rdb.Do(ctx,
+		"FT.AGGREGATE", indexName, "*",
+		"GROUPBY", "1", "@provider",
+	).Result()
+	if err != nil {
+		return fmt.Errorf("failed to get providers: %w", err)
+	}
+
+	usernames := parseAggregateGroupedValues(usernamesRaw, "username")
+	providers := parseAggregateGroupedValues(providersRaw, "provider")
+
+	// Store counters atomically using pipeline
+	pipe := r.rdb.Pipeline()
+	pipe.Set(ctx, statsKeyTotalKeys, totalKeys, 0)
+
+	// Add all usernames to set
+	if len(usernames) > 0 {
+		usernameSlice := make([]interface{}, len(usernames))
+		for i, username := range usernames {
+			usernameSlice[i] = username
+		}
+		pipe.SAdd(ctx, statsKeyUsernames, usernameSlice...)
+	}
+
+	// Add all providers to set
+	if len(providers) > 0 {
+		providerSlice := make([]interface{}, len(providers))
+		for i, provider := range providers {
+			providerSlice[i] = provider
+		}
+		pipe.SAdd(ctx, statsKeyProviders, providerSlice...)
+	}
+
+	// Mark as initialized
+	pipe.Set(ctx, statsKeyInitialized, "1", 0)
+
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to store stats counters: %w", err)
+	}
 
 	return nil
 }
@@ -301,6 +384,13 @@ func (r Repository) Create(ctx context.Context, sshkey *sshkeys.Entity) error {
 		return fmt.Errorf("failed to save ssh key: %w", status.Err())
 	}
 
+	// Update stats counters (non-blocking, best effort)
+	pipe := r.rdb.Pipeline()
+	pipe.Incr(ctx, statsKeyTotalKeys)
+	pipe.SAdd(ctx, statsKeyUsernames, model.Username)
+	pipe.SAdd(ctx, statsKeyProviders, model.Provider)
+	_, _ = pipe.Exec(ctx) // Ignore errors to not fail key creation
+
 	*sshkey = model.ToEntity()
 
 	return nil
@@ -324,4 +414,42 @@ func parseAggregateTotal(result interface{}) int {
 	}
 
 	return int(total)
+}
+
+// parseAggregateGroupedValues extracts field values from FT.AGGREGATE GROUPBY results.
+func parseAggregateGroupedValues(result interface{}, fieldName string) []string {
+	m, ok := result.([]interface{})
+	if !ok || len(m) < 2 {
+		return nil
+	}
+
+	totalCount, ok := m[0].(int64)
+	if !ok {
+		return nil
+	}
+
+	values := make([]string, 0, totalCount)
+	results, ok := m[1].([]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Each result is a map with the grouped field
+	for _, item := range results {
+		fields, fieldsOk := item.([]interface{})
+		if !fieldsOk || len(fields) < 2 {
+			continue
+		}
+
+		// Find the field value (format: [field_name, value, ...])
+		for i := 0; i < len(fields)-1; i += 2 {
+			if key, keyOk := fields[i].(string); keyOk && key == fieldName {
+				if value, valueOk := fields[i+1].(string); valueOk {
+					values = append(values, value)
+				}
+			}
+		}
+	}
+
+	return values
 }
