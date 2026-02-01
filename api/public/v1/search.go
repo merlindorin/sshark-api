@@ -170,12 +170,13 @@ func SSHKeys(
 
 	if !advanced {
 		query = ""
+		escapedQuery := escapeTagQuery(params.Query)
 
 		for i, field := range fields {
 			if i > 0 {
 				query += " OR "
 			}
-			query += fmt.Sprintf("@%s:{%s}", field, params.Query)
+			query += fmt.Sprintf("@%s:{%s}", field, escapedQuery)
 		}
 	}
 
