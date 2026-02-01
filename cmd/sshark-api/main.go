@@ -33,8 +33,9 @@ func main() {
 			Version: c.NewVersion(name, version, commit, buildSource, date),
 			Licence: c.NewLicence(license),
 		},
-		Redis: &globals.Redis{},
-		Serve: &commands.Serve{},
+		Redis:  &globals.Redis{},
+		Serve:  &commands.Serve{},
+		Scrape: &commands.Scrape{},
 	}
 
 	ctx := kong.Parse(
@@ -54,4 +55,5 @@ type CMD struct {
 	*globals.Redis `embed:"" prefix:"redis-"`
 	Serve          *commands.Serve   `cmd:"" help:"Start the API server"`
 	Migrate        *commands.Migrate `cmd:"" help:"Migrate the database"`
+	Scrape         *commands.Scrape  `cmd:"" help:"Scrape GitHub users and their SSH keys"`
 }

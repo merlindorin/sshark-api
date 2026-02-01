@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -194,9 +195,42 @@ func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 		&redis.FieldSchema{FieldName: "$.username", As: "username", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.created_at", As: "created_at", FieldType: redis.SearchFieldTypeText, Sortable: true},
 		&redis.FieldSchema{FieldName: "$.updated_at", As: "updated_at", FieldType: redis.SearchFieldTypeText, Sortable: true},
+		&redis.FieldSchema{
+			FieldName: "$.last_scraped_at",
+			As:        "last_scraped_at",
+			FieldType: redis.SearchFieldTypeNumeric,
+			Sortable:  true,
+		},
+		&redis.FieldSchema{
+			FieldName: "$.scraped_successfully",
+			As:        "scraped_successfully",
+			FieldType: redis.SearchFieldTypeTag,
+		},
 	).Result()
 
 	return err
+}
+
+// UpdateScrapeMetadata updates the scrape timestamp and success status for a user.
+func (r Repository) UpdateScrapeMetadata(ctx context.Context, username github.Username, success bool) error {
+	now := time.Now()
+
+	_, err := r.rdb.JSONSet(ctx, r.userKey(username), "$.last_scraped_at", now).Result()
+	if err != nil {
+		return fmt.Errorf("failed to update last_scraped_at: %w", err)
+	}
+
+	_, err = r.rdb.JSONSet(ctx, r.userKey(username), "$.scraped_successfully", success).Result()
+	if err != nil {
+		return fmt.Errorf("failed to update scraped_successfully: %w", err)
+	}
+
+	_, err = r.rdb.JSONSet(ctx, r.userKey(username), "$.updated_at", now).Result()
+	if err != nil {
+		return fmt.Errorf("failed to update updated_at: %w", err)
+	}
+
+	return nil
 }
 
 // userKey returns the Redis key for a user document.

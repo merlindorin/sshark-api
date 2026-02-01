@@ -3,11 +3,14 @@ package github
 import (
 	"bytes"
 	"io"
+	"time"
 )
 
 // User represents a GitHub user entity.
 type User struct {
-	Username Username
+	Username            Username
+	LastScrapedAt       *time.Time
+	ScrapedSuccessfully *bool
 }
 
 // AuthorizedKeys holds SSH public keys in authorized_keys format for a GitHub user.

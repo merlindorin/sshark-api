@@ -1,0 +1,100 @@
+{{- if .Values.scraper.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sshark-api.fullname" . }}-scraper
+  labels:
+    {{- include "sshark-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scraper
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sshark-api.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: scraper
+  template:
+    metadata:
+      {{- with .Values.scraper.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "sshark-api.labels" . | nindent 8 }}
+        app.kubernetes.io/component: scraper
+        {{- with .Values.scraper.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "sshark-api.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}-scraper
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - scrape
+            - --rate-limit
+            - {{ .Values.scraper.rateLimit | quote }}
+            - --batch-size
+            - {{ .Values.scraper.batchSize | quote }}
+          env:
+            - name: REDIS_HOST
+              {{- if .Values.dragonfly.enabled }}
+              value: "{{ include "sshark-api.fullname" . }}-dragonfly"
+              {{- else if index .Values "redis-stack" "enabled" }}
+              value: "redis-stack"
+              {{- else }}
+              value: {{ .Values.redis.host | quote }}
+              {{- end }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: REDIS_DB
+              value: {{ .Values.redis.db | quote }}
+            {{- if .Values.redis.existingSecret }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.existingSecret }}
+                  key: {{ .Values.redis.existingSecretPasswordKey }}
+            {{- else if .Values.redis.password }}
+            - name: REDIS_PASSWORD
+              value: {{ .Values.redis.password | quote }}
+            {{- end }}
+          {{- with .Values.scraper.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scraper.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scraper.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scraper.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -31,6 +31,9 @@ type Repository interface {
 
 	// Delete removes a GitHub user from the repository.
 	Delete(ctx context.Context, username Username) error
+
+	// UpdateScrapeMetadata updates the scrape timestamp and success status for a user.
+	UpdateScrapeMetadata(ctx context.Context, username Username, success bool) error
 }
 
 // KeyFetcher defines the interface for fetching SSH keys from GitHub.

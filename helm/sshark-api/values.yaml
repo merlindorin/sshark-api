@@ -143,3 +143,21 @@ volumeMounts: []
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# GitHub scraper configuration
+scraper:
+  enabled: true
+  rateLimit: 2.0
+  batchSize: 100
+  podAnnotations: {}
+  podLabels: {}
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
