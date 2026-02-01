@@ -20,10 +20,18 @@ spec:
       app.kubernetes.io/provider: {{ $provider }}
   template:
     metadata:
-      {{- with $config.podAnnotations }}
       annotations:
+        {{- if $.Values.metrics.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/path: {{ $.Values.metrics.path }}
+        prometheus.io/port: "8080"
+        metrics.grafana.com/scrape: "true"
+        metrics.grafana.com/path: {{ $.Values.metrics.path }}
+        metrics.grafana.com/port: "8080"
+        {{- end }}
+        {{- with $config.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "sshark-api.labels" $ | nindent 8 }}
         app.kubernetes.io/component: scraper
@@ -92,6 +100,10 @@ spec:
                   key: gitlab-token
                   {{- end }}
             {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
           {{- with $config.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
