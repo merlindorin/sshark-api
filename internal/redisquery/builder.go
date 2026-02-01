@@ -263,12 +263,37 @@ func escapePhrase(s string) string {
 }
 
 // escapeTag escapes characters within a tag value.
+// RediSearch TAG fields require escaping special characters: , . < > { } [ ] " ' : ; ! @ # $ % ^ & * ( ) - + = ~.
 func escapeTag(s string) string {
 	replacer := strings.NewReplacer(
 		`\`, `\\`,
-		`|`, `\|`,
+		`,`, `\,`,
+		`.`, `\.`,
+		`<`, `\<`,
+		`>`, `\>`,
 		`{`, `\{`,
 		`}`, `\}`,
+		`[`, `\[`,
+		`]`, `\]`,
+		`"`, `\"`,
+		`'`, `\'`,
+		`:`, `\:`,
+		`;`, `\;`,
+		`!`, `\!`,
+		`@`, `\@`,
+		`#`, `\#`,
+		`$`, `\$`,
+		`%`, `\%`,
+		`^`, `\^`,
+		`&`, `\&`,
+		`*`, `\*`,
+		`(`, `\(`,
+		`)`, `\)`,
+		`-`, `\-`,
+		`+`, `\+`,
+		`=`, `\=`,
+		`~`, `\~`,
+		`|`, `\|`,
 	)
 	return replacer.Replace(s)
 }
