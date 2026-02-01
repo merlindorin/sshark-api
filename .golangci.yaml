@@ -162,6 +162,10 @@ linters:
           - noctx
           - wrapcheck
         path: _test\.go
+      - linters:
+          - revive
+        path: api/common/
+        text: "var-naming: avoid meaningless package names"
     paths:
       - third_party$
       - builtin$
