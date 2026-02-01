@@ -9,6 +9,7 @@ import (
 
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
 	githubrepository "github.com/merlindorin/sshark-api/internal/infra/github/redis"
+	gitlabrepository "github.com/merlindorin/sshark-api/internal/infra/gitlab/redis"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
 )
 
@@ -30,16 +31,23 @@ func (s *Migrate) Run(ctx context.Context, common *cmd.Commons, redis *globals.R
 	redisClient := redis.Client()
 
 	srepo := sshkeysrepository.NewRedisRepository(redisClient)
-	grepo := githubrepository.NewRepository(redisClient)
+	githubRepo := githubrepository.NewRepository(redisClient)
+	gitlabRepo := gitlabrepository.NewRepository(redisClient)
 
 	err := srepo.EnsureIndex(ctx, s.ForceReindex)
 	if err != nil {
-		return fmt.Errorf("failed to ensure index: %w", err)
+		return fmt.Errorf("failed to ensure SSH keys index: %w", err)
 	}
 
-	err = grepo.EnsureIndex(context.Background(), s.ForceReindex)
+	err = githubRepo.EnsureIndex(ctx, s.ForceReindex)
 	if err != nil {
-		return fmt.Errorf("failed to ensure index: %w", err)
+		return fmt.Errorf("failed to ensure GitHub users index: %w", err)
 	}
+
+	err = gitlabRepo.EnsureIndex(ctx, s.ForceReindex)
+	if err != nil {
+		return fmt.Errorf("failed to ensure GitLab users index: %w", err)
+	}
+
 	return nil
 }

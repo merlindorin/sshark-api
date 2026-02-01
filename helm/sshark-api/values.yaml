@@ -144,20 +144,47 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# GitHub scraper configuration
-scraper:
-  enabled: true
-  rateLimit: 2.0
-  batchSize: 100
-  podAnnotations: {}
-  podLabels: {}
-  resources:
-    limits:
-      cpu: 100m
-      memory: 128Mi
-    requests:
-      cpu: 50m
-      memory: 64Mi
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
+# Multi-provider scraper configuration
+# Each provider can have its own scraper deployment
+scrapers:
+  github:
+    enabled: true
+    rateLimit: 2.0
+    batchSize: 100
+    podAnnotations: {}
+    podLabels: {}
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+  gitlab:
+    enabled: false
+    rateLimit: 5.0
+    batchSize: 100
+    # GitLab API token (required if enabled)
+    # If set, a secret will be automatically created.
+    # For production, use existingSecret instead.
+    token: ""
+    # Use existing secret for GitLab token (recommended for production)
+    # When using existingSecret, the token field above is ignored
+    existingSecret: ""
+    existingSecretKey: "gitlab-token"
+    podAnnotations: {}
+    podLabels: {}
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}

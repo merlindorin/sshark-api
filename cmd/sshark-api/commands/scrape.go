@@ -65,10 +65,6 @@ func (s *Scrape) runGitHub(ctx context.Context, common *cmd.Commons, redis *glob
 	service := ingester.NewGitHub(grepo, srepo, fetcher)
 	progressTracker := github.NewProgressTracker(redisClient)
 
-	if ensureErr := grepo.EnsureIndex(ctx, false); ensureErr != nil {
-		return fmt.Errorf("failed to ensure GitHub users index: %w", ensureErr)
-	}
-
 	limiter := rate.NewLimiter(rate.Limit(s.RateLimit), 1)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -206,10 +202,6 @@ func (s *Scrape) runGitLab(ctx context.Context, common *cmd.Commons, redis *glob
 	grepo := gitlabrepository.NewRepository(redisClient)
 	service := ingester.NewGitLab(grepo, srepo, fetcher)
 	progressTracker := gitlab.NewProgressTracker(redisClient)
-
-	if ensureErr := grepo.EnsureIndex(ctx, false); ensureErr != nil {
-		return fmt.Errorf("failed to ensure GitLab users index: %w", ensureErr)
-	}
 
 	limiter := rate.NewLimiter(rate.Limit(s.RateLimit), 1)
 
