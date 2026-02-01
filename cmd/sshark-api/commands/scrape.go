@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/merlindorin/go-shared/pkg/cmd"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 
@@ -21,6 +23,8 @@ import (
 	"github.com/merlindorin/sshark-api/internal/infra/gitlab"
 	gitlabrepository "github.com/merlindorin/sshark-api/internal/infra/gitlab/redis"
 	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
+	internalmetrics "github.com/merlindorin/sshark-api/internal/metrics"
+	"github.com/merlindorin/sshark-api/internal/otel"
 )
 
 type Scrape struct {
@@ -33,6 +37,22 @@ type Scrape struct {
 func (s *Scrape) Run(ctx context.Context, common *cmd.Commons, redis *globals.Redis) error {
 	if s.Provider == "gitlab" && s.GitLabToken == "" {
 		return fmt.Errorf("GITLAB_TOKEN required for gitlab provider")
+	}
+
+	logger := common.MustLogger()
+
+	meterProvider, err := otel.InitMeterProvider("sshark-api-scraper", common.Version.Version())
+	if err != nil {
+		return fmt.Errorf("failed to initialize meter provider: %w", err)
+	}
+	defer func() {
+		if shutdownErr := meterProvider.Shutdown(context.Background()); shutdownErr != nil {
+			logger.Error("failed to shutdown meter provider", zap.Error(shutdownErr))
+		}
+	}()
+
+	if err = internalmetrics.InitMetrics(); err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
 	}
 
 	switch s.Provider {
@@ -55,6 +75,11 @@ func (s *Scrape) runGitHub(ctx context.Context, common *cmd.Commons, redis *glob
 		zap.Float64("rate_limit", s.RateLimit),
 		zap.Int("batch_size", s.BatchSize),
 	)
+
+	scraperMetrics, err := internalmetrics.NewScraperMetrics("github")
+	if err != nil {
+		return fmt.Errorf("failed to initialize scraper metrics: %w", err)
+	}
 
 	redisClient := redis.Client()
 
@@ -88,9 +113,27 @@ func (s *Scrape) runGitHub(ctx context.Context, common *cmd.Commons, redis *glob
 		logger.Info("Resuming from last position", zap.Int64("last_user_id", lastID))
 	}
 
+	currentID := lastID
+	if err = scraperMetrics.RegisterPositionGauge(ctx, "github", func() int64 {
+		return currentID
+	}); err != nil {
+		logger.Warn("Failed to register position gauge", zap.Error(err))
+	}
+
 	totalProcessed := 0
 	totalIngested := 0
 	startTime := time.Now()
+
+	providerAttr := attribute.String("provider", "github")
+
+	processor := &githubUserProcessor{
+		service:         service,
+		grepo:           grepo,
+		scraperMetrics:  scraperMetrics,
+		providerAttr:    providerAttr,
+		logger:          logger,
+		progressTracker: progressTracker,
+	}
 
 	for {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -103,15 +146,20 @@ func (s *Scrape) runGitHub(ctx context.Context, common *cmd.Commons, redis *glob
 			return nil
 		}
 
+		waitStart := time.Now()
 		if waitErr := limiter.Wait(ctx); waitErr != nil {
 			return fmt.Errorf("rate limiter error: %w", waitErr)
 		}
+		scraperMetrics.RateLimitWait.Record(ctx, time.Since(waitStart).Seconds(), metric.WithAttributes(providerAttr))
 
 		users, fetchErr := usersFetcher.FetchUsers(ctx, lastID, s.BatchSize)
 		if fetchErr != nil {
 			logger.Error("Failed to fetch users", zap.Error(fetchErr))
+			scraperMetrics.FetchErrors.Add(ctx, 1, metric.WithAttributes(providerAttr))
 			continue
 		}
+
+		scraperMetrics.BatchSize.Record(ctx, int64(len(users)), metric.WithAttributes(providerAttr))
 
 		if len(users) == 0 {
 			logger.Info(
@@ -129,42 +177,19 @@ func (s *Scrape) runGitHub(ctx context.Context, common *cmd.Commons, redis *glob
 			}
 
 			totalProcessed++
+			scraperMetrics.UsersProcessed.Add(ctx, 1, metric.WithAttributes(providerAttr))
 
-			if waitErr := limiter.Wait(ctx); waitErr != nil {
-				return fmt.Errorf("rate limiter error: %w", waitErr)
+			newID, ingested, processErr := processor.process(ctx, user, limiter)
+			if processErr != nil {
+				return processErr
 			}
 
-			username := githubdomain.Username(user.Login)
+			lastID = newID
+			currentID = lastID
 
-			ingestErr := service.Ingest(ctx, user.Login)
-			success := ingestErr == nil
-
-			userExists, existErr := grepo.Exist(ctx, username)
-			if existErr != nil {
-				logger.Warn("Failed to check user existence",
-					zap.String("username", user.Login),
-					zap.Error(existErr),
-				)
-			} else if userExists {
-				if updateErr := grepo.UpdateScrapeMetadata(ctx, username, success); updateErr != nil {
-					logger.Warn("Failed to update scrape metadata",
-						zap.String("username", user.Login),
-						zap.Error(updateErr),
-					)
-				}
+			if ingested {
+				totalIngested++
 			}
-
-			if ingestErr != nil {
-				logger.Warn("Failed to ingest user",
-					zap.String("username", user.Login),
-					zap.Error(ingestErr),
-				)
-				lastID = user.ID
-				continue
-			}
-
-			totalIngested++
-			lastID = user.ID
 
 			if totalProcessed%100 == 0 {
 				logger.Info(
@@ -193,6 +218,11 @@ func (s *Scrape) runGitLab(ctx context.Context, common *cmd.Commons, redis *glob
 		zap.Float64("rate_limit", s.RateLimit),
 		zap.Int("batch_size", s.BatchSize),
 	)
+
+	scraperMetrics, err := internalmetrics.NewScraperMetrics("gitlab")
+	if err != nil {
+		return fmt.Errorf("failed to initialize scraper metrics: %w", err)
+	}
 
 	redisClient := redis.Client()
 
@@ -226,9 +256,27 @@ func (s *Scrape) runGitLab(ctx context.Context, common *cmd.Commons, redis *glob
 		logger.Info("Resuming from last position", zap.Int("last_page", page))
 	}
 
+	currentPage := int64(page)
+	if err = scraperMetrics.RegisterPositionGauge(ctx, "gitlab", func() int64 {
+		return currentPage
+	}); err != nil {
+		logger.Warn("Failed to register position gauge", zap.Error(err))
+	}
+
 	totalProcessed := 0
 	totalIngested := 0
 	startTime := time.Now()
+
+	providerAttr := attribute.String("provider", "gitlab")
+
+	processor := &gitlabUserProcessor{
+		service:         service,
+		grepo:           grepo,
+		scraperMetrics:  scraperMetrics,
+		providerAttr:    providerAttr,
+		logger:          logger,
+		progressTracker: progressTracker,
+	}
 
 	for {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -241,15 +289,20 @@ func (s *Scrape) runGitLab(ctx context.Context, common *cmd.Commons, redis *glob
 			return nil
 		}
 
+		waitStart := time.Now()
 		if waitErr := limiter.Wait(ctx); waitErr != nil {
 			return fmt.Errorf("rate limiter error: %w", waitErr)
 		}
+		scraperMetrics.RateLimitWait.Record(ctx, time.Since(waitStart).Seconds(), metric.WithAttributes(providerAttr))
 
 		users, fetchErr := usersFetcher.FetchUsers(ctx, page, s.BatchSize)
 		if fetchErr != nil {
 			logger.Error("Failed to fetch users", zap.Error(fetchErr))
+			scraperMetrics.FetchErrors.Add(ctx, 1, metric.WithAttributes(providerAttr))
 			continue
 		}
+
+		scraperMetrics.BatchSize.Record(ctx, int64(len(users)), metric.WithAttributes(providerAttr))
 
 		if len(users) == 0 {
 			logger.Info(
@@ -267,40 +320,16 @@ func (s *Scrape) runGitLab(ctx context.Context, common *cmd.Commons, redis *glob
 			}
 
 			totalProcessed++
+			scraperMetrics.UsersProcessed.Add(ctx, 1, metric.WithAttributes(providerAttr))
 
-			if waitErr := limiter.Wait(ctx); waitErr != nil {
-				return fmt.Errorf("rate limiter error: %w", waitErr)
+			ingested, processErr := processor.process(ctx, user, limiter)
+			if processErr != nil {
+				return processErr
 			}
 
-			username := gitlabdomain.Username(user.Username)
-
-			ingestErr := service.Ingest(ctx, user.Username)
-			success := ingestErr == nil
-
-			userExists, existErr := grepo.Exist(ctx, username)
-			if existErr != nil {
-				logger.Warn("Failed to check user existence",
-					zap.String("username", user.Username),
-					zap.Error(existErr),
-				)
-			} else if userExists {
-				if updateErr := grepo.UpdateScrapeMetadata(ctx, username, success); updateErr != nil {
-					logger.Warn("Failed to update scrape metadata",
-						zap.String("username", user.Username),
-						zap.Error(updateErr),
-					)
-				}
+			if ingested {
+				totalIngested++
 			}
-
-			if ingestErr != nil {
-				logger.Warn("Failed to ingest user",
-					zap.String("username", user.Username),
-					zap.Error(ingestErr),
-				)
-				continue
-			}
-
-			totalIngested++
 
 			if totalProcessed%100 == 0 {
 				logger.Info(
@@ -314,8 +343,113 @@ func (s *Scrape) runGitLab(ctx context.Context, common *cmd.Commons, redis *glob
 		}
 
 		page++
+		currentPage = int64(page)
 		if saveErr := progressTracker.SetLastPage(ctx, page); saveErr != nil {
 			logger.Error("Failed to save progress", zap.Error(saveErr))
 		}
 	}
+}
+
+type githubUserProcessor struct {
+	service         *ingester.GitHubService
+	grepo           *githubrepository.Repository
+	scraperMetrics  *internalmetrics.ScraperMetrics
+	providerAttr    attribute.KeyValue
+	logger          *zap.Logger
+	progressTracker *github.ProgressTracker
+}
+
+func (p *githubUserProcessor) process(
+	ctx context.Context, user github.User, limiter *rate.Limiter,
+) (int64, bool, error) {
+	waitStart := time.Now()
+	if waitErr := limiter.Wait(ctx); waitErr != nil {
+		return 0, false, fmt.Errorf("rate limiter error: %w", waitErr)
+	}
+	p.scraperMetrics.RateLimitWait.Record(ctx, time.Since(waitStart).Seconds(), metric.WithAttributes(p.providerAttr))
+
+	username := githubdomain.Username(user.Login)
+
+	ingestStart := time.Now()
+	ingestErr := p.service.Ingest(ctx, user.Login)
+	p.scraperMetrics.ScrapeDuration.Record(ctx, time.Since(ingestStart).Seconds(), metric.WithAttributes(p.providerAttr))
+	success := ingestErr == nil
+
+	userExists, existErr := p.grepo.Exist(ctx, username)
+	if existErr != nil {
+		p.logger.Warn("Failed to check user existence",
+			zap.String("username", user.Login),
+			zap.Error(existErr),
+		)
+	} else if userExists {
+		if updateErr := p.grepo.UpdateScrapeMetadata(ctx, username, success); updateErr != nil {
+			p.logger.Warn("Failed to update scrape metadata",
+				zap.String("username", user.Login),
+				zap.Error(updateErr),
+			)
+		}
+	}
+
+	if ingestErr != nil {
+		p.logger.Warn("Failed to ingest user",
+			zap.String("username", user.Login),
+			zap.Error(ingestErr),
+		)
+		p.scraperMetrics.IngestErrors.Add(ctx, 1, metric.WithAttributes(p.providerAttr))
+		return user.ID, false, nil
+	}
+
+	p.scraperMetrics.UsersIngested.Add(ctx, 1, metric.WithAttributes(p.providerAttr))
+	return user.ID, true, nil
+}
+
+type gitlabUserProcessor struct {
+	service         *ingester.GitLabService
+	grepo           *gitlabrepository.Repository
+	scraperMetrics  *internalmetrics.ScraperMetrics
+	providerAttr    attribute.KeyValue
+	logger          *zap.Logger
+	progressTracker *gitlab.ProgressTracker
+}
+
+func (p *gitlabUserProcessor) process(ctx context.Context, user gitlab.User, limiter *rate.Limiter) (bool, error) {
+	waitStart := time.Now()
+	if waitErr := limiter.Wait(ctx); waitErr != nil {
+		return false, fmt.Errorf("rate limiter error: %w", waitErr)
+	}
+	p.scraperMetrics.RateLimitWait.Record(ctx, time.Since(waitStart).Seconds(), metric.WithAttributes(p.providerAttr))
+
+	username := gitlabdomain.Username(user.Username)
+
+	ingestStart := time.Now()
+	ingestErr := p.service.Ingest(ctx, user.Username)
+	p.scraperMetrics.ScrapeDuration.Record(ctx, time.Since(ingestStart).Seconds(), metric.WithAttributes(p.providerAttr))
+	success := ingestErr == nil
+
+	userExists, existErr := p.grepo.Exist(ctx, username)
+	if existErr != nil {
+		p.logger.Warn("Failed to check user existence",
+			zap.String("username", user.Username),
+			zap.Error(existErr),
+		)
+	} else if userExists {
+		if updateErr := p.grepo.UpdateScrapeMetadata(ctx, username, success); updateErr != nil {
+			p.logger.Warn("Failed to update scrape metadata",
+				zap.String("username", user.Username),
+				zap.Error(updateErr),
+			)
+		}
+	}
+
+	if ingestErr != nil {
+		p.logger.Warn("Failed to ingest user",
+			zap.String("username", user.Username),
+			zap.Error(ingestErr),
+		)
+		p.scraperMetrics.IngestErrors.Add(ctx, 1, metric.WithAttributes(p.providerAttr))
+		return false, nil
+	}
+
+	p.scraperMetrics.UsersIngested.Add(ctx, 1, metric.WithAttributes(p.providerAttr))
+	return true, nil
 }
