@@ -114,14 +114,24 @@ func (s *Scrape) Run(ctx context.Context, common *cmd.Commons, redis *globals.Re
 				return fmt.Errorf("rate limiter error: %w", waitErr)
 			}
 
+			username := githubdomain.Username(user.Login)
+
 			ingestErr := service.Ingest(ctx, user.Login)
 			success := ingestErr == nil
 
-			if updateErr := grepo.UpdateScrapeMetadata(ctx, githubdomain.Username(user.Login), success); updateErr != nil {
-				logger.Warn("Failed to update scrape metadata",
+			userExists, existErr := grepo.Exist(ctx, username)
+			if existErr != nil {
+				logger.Warn("Failed to check user existence",
 					zap.String("username", user.Login),
-					zap.Error(updateErr),
+					zap.Error(existErr),
 				)
+			} else if userExists {
+				if updateErr := grepo.UpdateScrapeMetadata(ctx, username, success); updateErr != nil {
+					logger.Warn("Failed to update scrape metadata",
+						zap.String("username", user.Login),
+						zap.Error(updateErr),
+					)
+				}
 			}
 
 			if ingestErr != nil {
