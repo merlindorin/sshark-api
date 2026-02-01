@@ -17,8 +17,6 @@ type SSHKey struct {
 	Comment   string    `json:"comment"`
 	Options   []string  `json:"options"`
 	Key       []byte    `json:"key"`
-	Raw       []byte    `json:"raw"`
-	Rest      []byte    `json:"rest"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
