@@ -72,6 +72,14 @@ redis:
   existingSecret: ""
   existingSecretPasswordKey: "redis-password"
 
+# Clerk authentication configuration
+clerk:
+  # Clerk secret key (for development only, use existingSecret in production)
+  token: ""
+  # Use existing secret for Clerk token (recommended for production)
+  existingSecret: ""
+  existingSecretKey: "clerk-token"
+
 serviceAccount:
   create: true
   automount: true

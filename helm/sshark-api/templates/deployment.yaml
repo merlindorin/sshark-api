@@ -69,6 +69,16 @@ spec:
             - name: REDIS_PASSWORD
               value: {{ .Values.redis.password | quote }}
             {{- end }}
+            - name: CLERK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.clerk.existingSecret }}
+                  name: {{ .Values.clerk.existingSecret }}
+                  key: {{ .Values.clerk.existingSecretKey }}
+                  {{- else }}
+                  name: {{ include "sshark-api.fullname" . }}-clerk-token
+                  key: clerk-token
+                  {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
