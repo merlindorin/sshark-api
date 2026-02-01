@@ -169,6 +169,14 @@ scrapers:
     enabled: false
     rateLimit: 2.0
     batchSize: 100
+    # GitHub API token (optional, highly recommended to avoid rate limits)
+    # If set, a secret will be automatically created.
+    # For production, use existingSecret instead.
+    token: ""
+    # Use existing secret for GitHub token (recommended for production)
+    # When using existingSecret, the token field above is ignored
+    existingSecret: ""
+    existingSecretKey: "github-token"
     podAnnotations: {}
     podLabels: {}
     resources:

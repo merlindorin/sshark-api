@@ -88,6 +88,20 @@ spec:
             - name: REDIS_PASSWORD
               value: {{ $.Values.redis.password | quote }}
             {{- end }}
+            {{- if eq $provider "github" }}
+            {{- if or $config.token $config.existingSecret }}
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  {{- if $config.existingSecret }}
+                  name: {{ $config.existingSecret }}
+                  key: {{ $config.existingSecretKey }}
+                  {{- else }}
+                  name: {{ include "sshark-api.fullname" $ }}-github-token
+                  key: github-token
+                  {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if eq $provider "gitlab" }}
             - name: GITLAB_TOKEN
               valueFrom:

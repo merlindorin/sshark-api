@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/merlindorin/go-shared/pkg/cmd"
+	"github.com/merlindorin/go-shared/pkg/net/do"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -33,7 +34,8 @@ type Scrape struct {
 	Provider    string  `help:"Provider (github, gitlab)" default:"github" enum:"github,gitlab"`
 	RateLimit   float64 `help:"Requests per second" default:"2.0"`
 	BatchSize   int     `help:"Users per batch" default:"100"`
-	GitLabToken string  `env:"GITLAB_TOKEN" help:"GitLab API token (required for gitlab)"`
+	GitHubToken string  `env:"GITHUB_TOKEN" help:"GitHub API token (optional, increases rate limit)"`
+	GitLabToken string  `env:"GITLAB_TOKEN" help:"GitLab API token (optional, increases rate limit)"`
 }
 
 func (s *Scrape) Run(ctx context.Context, common *cmd.Commons, redis *globals.Redis) error {
@@ -107,8 +109,16 @@ func (s *Scrape) runGitHub(ctx context.Context, common *cmd.Commons, redis *glob
 
 	redisClient := redis.Client()
 
-	fetcher := github.NewFetcher(logger)
-	usersFetcher := github.NewUsersFetcher(logger)
+	var githubOptions []do.Option
+	if s.GitHubToken != "" {
+		logger.Info("Using GitHub token for authentication")
+		headers := make(http.Header)
+		headers.Set("Authorization", "Bearer "+s.GitHubToken)
+		githubOptions = append(githubOptions, do.WithHeader(headers))
+	}
+
+	fetcher := github.NewFetcher(logger, githubOptions...)
+	usersFetcher := github.NewUsersFetcher(logger, githubOptions...)
 	srepo := sshkeysrepository.NewRedisRepository(redisClient)
 	grepo := githubrepository.NewRepository(redisClient)
 	service := ingester.NewGitHub(grepo, srepo, fetcher)
