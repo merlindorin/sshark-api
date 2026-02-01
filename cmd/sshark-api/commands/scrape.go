@@ -3,12 +3,14 @@ package commands
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/merlindorin/go-shared/pkg/cmd"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -54,6 +56,28 @@ func (s *Scrape) Run(ctx context.Context, common *cmd.Commons, redis *globals.Re
 	if err = internalmetrics.InitMetrics(); err != nil {
 		return fmt.Errorf("failed to initialize metrics: %w", err)
 	}
+
+	// Start metrics HTTP server in background
+	metricsServer := &http.Server{
+		Addr:              ":8080",
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		logger.Info("Starting metrics server", zap.String("address", ":8080"))
+		if serverErr := metricsServer.ListenAndServe(); serverErr != nil && serverErr != http.ErrServerClosed {
+			logger.Error("Metrics server error", zap.Error(serverErr))
+		}
+	}()
+
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if shutdownErr := metricsServer.Shutdown(shutdownCtx); shutdownErr != nil {
+			logger.Error("Failed to shutdown metrics server", zap.Error(shutdownErr))
+		}
+	}()
 
 	switch s.Provider {
 	case "github":
