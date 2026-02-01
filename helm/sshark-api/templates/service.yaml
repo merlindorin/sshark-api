@@ -6,9 +6,14 @@ metadata:
     {{- include "sshark-api.labels" . | nindent 4 }}
   {{- if .Values.metrics.enabled }}
   annotations:
+    # Prometheus annotations
     prometheus.io/scrape: "true"
     prometheus.io/path: {{ .Values.metrics.path }}
     prometheus.io/port: {{ .Values.service.port | quote }}
+    # Grafana Alloy annotations
+    metrics.grafana.com/scrape: "true"
+    metrics.grafana.com/path: {{ .Values.metrics.path }}
+    metrics.grafana.com/port: {{ .Values.service.port | quote }}
   {{- end }}
 spec:
   type: {{ .Values.service.type }}

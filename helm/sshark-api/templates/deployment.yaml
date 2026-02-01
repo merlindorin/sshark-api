@@ -13,10 +13,18 @@ spec:
       {{- include "sshark-api.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        {{- if .Values.metrics.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/path: {{ .Values.metrics.path }}
+        prometheus.io/port: "8080"
+        metrics.grafana.com/scrape: "true"
+        metrics.grafana.com/path: {{ .Values.metrics.path }}
+        metrics.grafana.com/port: "8080"
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "sshark-api.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
