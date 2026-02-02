@@ -33,12 +33,45 @@ func NewClient(logger *zap.Logger, token string, options ...do.Option) *Client {
 		append([]do.Option{
 			do.WithJSONRequest(),
 			do.WithLogger(logger),
+			WithDebugPreRequestLogger(logger),
 			WithTokenAuth(token),
+			WithDebugPostRequestLogger(logger),
 			WithDefaultHTTPErrorCodeHandler(),
 		}, options...)...,
 	)
 
 	return cl
+}
+
+func WithDebugPreRequestLogger(logger *zap.Logger) do.Option {
+	return do.WithPreRequestHandler("debug_pre_request", func(_ context.Context, req *http.Request) error {
+		logger.Debug("GitLab API Request [PRE]",
+			zap.String("method", req.Method),
+			zap.String("url", req.URL.String()),
+			zap.String("host", req.Host),
+			zap.String("path", req.URL.Path),
+			zap.String("raw_query", req.URL.RawQuery),
+			zap.Any("headers", req.Header),
+			zap.Int64("content_length", req.ContentLength),
+			zap.String("proto", req.Proto),
+		)
+		return nil
+	})
+}
+
+func WithDebugPostRequestLogger(logger *zap.Logger) do.Option {
+	return do.WithPostRequestHandler("debug_post_request",
+		func(_ context.Context, req *http.Request, resp *http.Response) error {
+			logger.Debug("GitLab API Response [POST]",
+				zap.String("method", req.Method),
+				zap.String("url", req.URL.String()),
+				zap.Int("status_code", resp.StatusCode),
+				zap.String("status", resp.Status),
+				zap.Any("response_headers", resp.Header),
+				zap.Int64("content_length", resp.ContentLength),
+			)
+			return nil
+		})
 }
 
 func WithTokenAuth(token string) do.Option {

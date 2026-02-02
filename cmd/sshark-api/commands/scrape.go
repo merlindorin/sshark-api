@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -331,6 +332,21 @@ func (s *Scrape) runGitLab(ctx context.Context, common *cmd.Commons, redis *glob
 
 		users, fetchErr := usersFetcher.FetchUsers(ctx, page, s.BatchSize)
 		if fetchErr != nil {
+			// GitLab has a maximum page limit of 500. When we hit it, restart from page 1
+			if page >= 500 && strings.Contains(fetchErr.Error(), "405") {
+				logger.Info("Reached GitLab pagination limit (page 500), restarting from page 1",
+					zap.Int("last_page", page),
+					zap.Int("total_processed", totalProcessed),
+					zap.Int("total_ingested", totalIngested),
+				)
+				page = 1
+				currentPage = 1
+				if saveErr := progressTracker.SetLastPage(ctx, page); saveErr != nil {
+					logger.Error("Failed to reset progress", zap.Error(saveErr))
+				}
+				continue
+			}
+
 			logger.Error("Failed to fetch users", zap.Error(fetchErr))
 			scraperMetrics.FetchErrors.Add(ctx, 1, metric.WithAttributes(providerAttr))
 			continue
