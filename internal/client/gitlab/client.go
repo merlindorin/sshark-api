@@ -31,7 +31,6 @@ func NewClient(logger *zap.Logger, token string, options ...do.Option) *Client {
 	cl.Requester = rest.NewRest(
 		GitLabAPIURL,
 		append([]do.Option{
-			do.WithJSONRequest(),
 			do.WithLogger(logger),
 			WithTokenAuth(token),
 			WithDefaultHTTPErrorCodeHandler(),
