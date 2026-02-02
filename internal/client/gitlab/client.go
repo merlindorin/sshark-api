@@ -31,26 +31,14 @@ func NewClient(logger *zap.Logger, token string, options ...do.Option) *Client {
 	cl.Requester = rest.NewRest(
 		GitLabAPIURL,
 		append([]do.Option{
+			do.WithJSONRequest(),
 			do.WithLogger(logger),
-			WithDebugRequestLogger(logger),
 			WithTokenAuth(token),
 			WithDefaultHTTPErrorCodeHandler(),
 		}, options...)...,
 	)
 
 	return cl
-}
-
-func WithDebugRequestLogger(logger *zap.Logger) do.Option {
-	return do.WithPreRequestHandler("debug_request_logger", func(_ context.Context, req *http.Request) error {
-		logger.Info("GitLab API Request",
-			zap.String("method", req.Method),
-			zap.String("url", req.URL.String()),
-			zap.Any("headers", req.Header),
-			zap.Int64("content_length", req.ContentLength),
-		)
-		return nil
-	})
 }
 
 func WithTokenAuth(token string) do.Option {
