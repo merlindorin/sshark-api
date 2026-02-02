@@ -167,7 +167,7 @@ affinity: {}
 scrapers:
   github:
     enabled: false
-    rateLimit: 2.0
+    rateLimit: 1.8
     batchSize: 100
     # GitHub API token (optional, highly recommended to avoid rate limits)
     # If set, a secret will be automatically created.
