@@ -207,8 +207,15 @@ func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 			FieldType: redis.SearchFieldTypeTag,
 		},
 	).Result()
+	if err != nil {
+		// If index already exists (race condition or timing issue), treat as success
+		if err.Error() == "Index already exists" {
+			return nil
+		}
+		return err
+	}
 
-	return err
+	return nil
 }
 
 // UpdateScrapeMetadata updates the scrape timestamp and success status for a user.

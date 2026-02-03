@@ -240,8 +240,15 @@ func (r Repository) EnsureIndex(ctx context.Context, forceReindex bool) error {
 		&redis.FieldSchema{FieldName: "$.key", As: "key", FieldType: redis.SearchFieldTypeTag},
 		&redis.FieldSchema{FieldName: "$.comment", As: "comment", FieldType: redis.SearchFieldTypeTag},
 	).Result()
+	if err != nil {
+		// If index already exists (race condition or timing issue), treat as success
+		if err.Error() == "Index already exists" {
+			return nil
+		}
+		return err
+	}
 
-	return err
+	return nil
 }
 
 func (r Repository) SSHKeyCount(ctx context.Context) (int, error) {
