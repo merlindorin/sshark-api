@@ -91,6 +91,53 @@ scraper:
 
 The scraper runs as a single replica deployment with `Recreate` strategy to ensure only one instance is running at a time.
 
+### Grafana Dashboard
+
+The chart includes an optional Grafana dashboard that works with [Grafana Operator](https://github.com/grafana-operator/grafana-operator).
+
+#### Prerequisites
+
+1. Grafana Operator installed in your cluster
+2. A Grafana instance (Grafana CR) running
+3. Prometheus datasource configured in Grafana
+4. ServiceMonitor enabled to scrape metrics
+
+#### Enable the Dashboard
+
+1. Find your Prometheus datasource UID in Grafana:
+   - Go to: **Settings → Data Sources → Prometheus**
+   - Copy the **UID** (e.g., `eed2ceb1-51e5-471e-950f-beab8421a126`)
+
+2. Enable the dashboard:
+
+```yaml
+grafana:
+  dashboard:
+    enabled: true
+    datasourceUID: "eed2ceb1-51e5-471e-950f-beab8421a126"  # Your Prometheus UID
+    instanceSelector:
+      matchLabels:
+        dashboards: "grafana"  # Labels matching your Grafana CR
+    folderName: "SSHark"  # Optional: organize in a folder
+```
+
+3. Install or upgrade:
+
+```bash
+helm upgrade --install sshark-api ./helm/sshark-api \
+  --set grafana.dashboard.enabled=true \
+  --set grafana.dashboard.datasourceUID=YOUR-DATASOURCE-UID
+```
+
+#### Dashboard Features
+
+- **Statistics**: Total keys, providers, and usernames
+- **Scraper Activity**: Users processed/ingested rates, position tracking
+- **Error Tracking**: Fetch and ingest error rates
+- **Performance**: Duration, rate limit wait time, batch size (p50, p95, p99)
+
+Auto-refresh: 30 seconds | Default range: Last 6 hours
+
 ## Common Configurations
 
 ### Basic Installation
@@ -150,5 +197,8 @@ autoscaling:
 | `redis.port` | int | `6379` | Redis port |
 | `redis.password` | string | `""` | Redis password |
 | `redis.db` | int | `0` | Redis database number |
+| `grafana.dashboard.enabled` | bool | `false` | Enable Grafana dashboard |
+| `grafana.dashboard.datasourceUID` | string | `""` | Prometheus datasource UID in Grafana |
+| `metrics.enabled` | bool | `true` | Enable Prometheus metrics endpoint |
 
 For a complete list of values, see [values.yaml](values.yaml).

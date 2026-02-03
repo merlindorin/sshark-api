@@ -214,3 +214,19 @@ scrapers:
     nodeSelector: {}
     tolerations: []
     affinity: {}
+
+# Grafana dashboard configuration (for grafana-operator)
+grafana:
+  dashboard:
+    # Enable the Grafana dashboard
+    enabled: false
+    # Prometheus datasource UID in your Grafana instance
+    # Find this in Grafana: Settings > Data Sources > Prometheus > UID
+    datasourceUID: ""
+    # Optional: Grafana instance selector (labels to match your Grafana CR)
+    # Example: { matchLabels: { dashboards: "grafana" } }
+    instanceSelector:
+      matchLabels:
+        dashboards: "grafana"
+    # Optional: Folder name in Grafana to organize the dashboard
+    folderName: ""
