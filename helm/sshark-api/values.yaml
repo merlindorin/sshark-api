@@ -57,6 +57,12 @@ dragonfly:
   # Node selector for Dragonfly pods
   nodeSelector: {}
 
+# Migration hook configuration
+migration:
+  # Enable pre-install/pre-upgrade migration hook
+  # The migration hook creates RediSearch indexes before the application starts
+  enabled: true
+
 # Redis connection configuration
 # When redis-stack.enabled is true, host is auto-configured to the subchart service
 # When dragonfly.enabled is true, host is auto-configured to the dragonfly service
