@@ -347,32 +347,57 @@ components:
     Statistics:
       type: object
       required:
-        - total_keys
-        - total_ssh_keys
-        - total_gpg_keys
-        - total_usernames
-        - total_providers
+        - facets
       properties:
-        total_keys:
+        facets:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/Facet'
+          example:
+            source.provider:
+              - type: value
+                data:
+                  - value: github
+                    count: 2345
+                  - value: gitlab
+                    count: 456
+            algorithm:
+              - type: value
+                data:
+                  - value: ssh-ed25519
+                    count: 1500
+                  - value: ssh-rsa
+                    count: 800
+
+    Facet:
+      type: object
+      required:
+        - type
+        - data
+      properties:
+        type:
+          type: string
+          enum: [value]
+          description: Facet type
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacetValue'
+
+    FacetValue:
+      type: object
+      required:
+        - value
+        - count
+      properties:
+        value:
+          type: string
+          description: Facet value
+        count:
           type: integer
-          description: Total number of public keys indexed
-          example: 1000
-        total_ssh_keys:
-          type: integer
-          description: Total number of SSH keys indexed
-          example: 800
-        total_gpg_keys:
-          type: integer
-          description: Total number of GPG keys indexed
-          example: 200
-        total_usernames:
-          type: integer
-          description: Total number of unique usernames
-          example: 500
-        total_providers:
-          type: integer
-          description: Total number of providers
-          example: 2
+          description: Number of occurrences
 
 tags:
   - name: SSH Keys

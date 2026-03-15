@@ -21,11 +21,18 @@ func Stats(c *gin.Context, logger *zap.Logger, repo sources.Repository) {
 		return
 	}
 
-	c.JSON(http.StatusOK, public.Statistics{
-		TotalKeys:      stats.TotalKeys,
-		TotalSshKeys:   stats.TotalSSHKeys,
-		TotalGpgKeys:   stats.TotalGPGKeys,
-		TotalUsernames: stats.TotalUsernames,
-		TotalProviders: stats.TotalProviders,
-	})
+	facets := make(map[string][]public.Facet)
+	for field, domainFacets := range stats.Facets {
+		apiFacets := make([]public.Facet, len(domainFacets))
+		for i, f := range domainFacets {
+			data := make([]public.FacetValue, len(f.Data))
+			for j, v := range f.Data {
+				data[j] = public.FacetValue{Value: v.Value, Count: v.Count}
+			}
+			apiFacets[i] = public.Facet{Type: public.FacetType(f.Type), Data: data}
+		}
+		facets[field] = apiFacets
+	}
+
+	c.JSON(http.StatusOK, public.Statistics{Facets: facets})
 }

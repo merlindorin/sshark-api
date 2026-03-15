@@ -183,25 +183,77 @@ func (r *Repository) Exists(ctx context.Context, provider, userID string) (bool,
 }
 
 func (r *Repository) GetStats(ctx context.Context) (*sources.Stats, error) {
-	var stats sources.Stats
+	stats := &sources.Stats{
+		Facets: make(map[string][]sources.Facet),
+	}
 
-	err := r.pool.QueryRow(ctx, `
-		SELECT
-			(SELECT COUNT(*) FROM public_keys) AS total_keys,
-			(SELECT COUNT(*) FROM public_keys WHERE key_type = 'ssh') AS total_ssh_keys,
-			(SELECT COUNT(*) FROM public_keys WHERE key_type = 'gpg') AS total_gpg_keys,
-			(SELECT COUNT(DISTINCT username) FROM sources) AS total_usernames,
-			(SELECT COUNT(DISTINCT provider) FROM sources) AS total_providers
-	`).Scan(
-		&stats.TotalKeys,
-		&stats.TotalSSHKeys,
-		&stats.TotalGPGKeys,
-		&stats.TotalUsernames,
-		&stats.TotalProviders,
-	)
+	providerFacet, err := r.getValueFacet(ctx, `
+		SELECT s.provider, COUNT(pk.id)
+		FROM public_keys pk
+		JOIN sources s ON pk.source_id = s.id
+		GROUP BY s.provider
+		ORDER BY COUNT(pk.id) DESC
+	`)
 	if err != nil {
 		return nil, err
 	}
+	stats.Facets["source.provider"] = []sources.Facet{providerFacet}
 
-	return &stats, nil
+	algorithmFacet, err := r.getValueFacet(ctx, `
+		SELECT algorithm, COUNT(*) FROM (
+			SELECT algorithm FROM ssh_key_metadata
+			UNION ALL
+			SELECT algorithm FROM gpg_key_metadata
+		) AS algorithms
+		GROUP BY algorithm
+		ORDER BY COUNT(*) DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	stats.Facets["algorithm"] = []sources.Facet{algorithmFacet}
+
+	keyTypeFacet, err := r.getValueFacet(ctx, `
+		SELECT key_type::text, COUNT(*)
+		FROM public_keys
+		GROUP BY key_type
+		ORDER BY COUNT(*) DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	stats.Facets["key_type"] = []sources.Facet{keyTypeFacet}
+
+	usernameFacet, err := r.getValueFacet(ctx, `
+		SELECT 'total'::text, COUNT(DISTINCT username)
+		FROM sources
+	`)
+	if err != nil {
+		return nil, err
+	}
+	stats.Facets["source.username"] = []sources.Facet{usernameFacet}
+
+	return stats, nil
+}
+
+func (r *Repository) getValueFacet(ctx context.Context, query string) (sources.Facet, error) {
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return sources.Facet{}, err
+	}
+	defer rows.Close()
+
+	facet := sources.Facet{
+		Type: "value",
+		Data: []sources.FacetValue{},
+	}
+	for rows.Next() {
+		var value string
+		var count int
+		if scanErr := rows.Scan(&value, &count); scanErr != nil {
+			return sources.Facet{}, scanErr
+		}
+		facet.Data = append(facet.Data, sources.FacetValue{Value: value, Count: count})
+	}
+	return facet, rows.Err()
 }

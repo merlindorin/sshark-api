@@ -16,6 +16,11 @@ import (
 // ServerUrlAPIV1 defines the Server URL for API v1
 const ServerUrlAPIV1 = "/api/v1"
 
+// Defines values for FacetType.
+const (
+	Value FacetType = "value"
+)
+
 // Defines values for SearchGPGKeysParamsFields.
 const (
 	SearchGPGKeysParamsFieldsAlgorithm      SearchGPGKeysParamsFields = "algorithm"
@@ -42,6 +47,26 @@ const (
 	SearchSSHKeysParamsFieldsSourceUserId   SearchSSHKeysParamsFields = "source.user_id"
 	SearchSSHKeysParamsFieldsSourceUsername SearchSSHKeysParamsFields = "source.username"
 )
+
+// Facet defines model for Facet.
+type Facet struct {
+	Data []FacetValue `json:"data"`
+
+	// Type Facet type
+	Type FacetType `json:"type"`
+}
+
+// FacetType Facet type
+type FacetType string
+
+// FacetValue defines model for FacetValue.
+type FacetValue struct {
+	// Count Number of occurrences
+	Count int `json:"count"`
+
+	// Value Facet value
+	Value string `json:"value"`
+}
 
 // GPGSearchResponse defines model for GPGSearchResponse.
 type GPGSearchResponse struct {
@@ -87,20 +112,7 @@ type SSHSearchResponse struct {
 
 // Statistics defines model for Statistics.
 type Statistics struct {
-	// TotalGpgKeys Total number of GPG keys indexed
-	TotalGpgKeys int `json:"total_gpg_keys"`
-
-	// TotalKeys Total number of public keys indexed
-	TotalKeys int `json:"total_keys"`
-
-	// TotalProviders Total number of providers
-	TotalProviders int `json:"total_providers"`
-
-	// TotalSshKeys Total number of SSH keys indexed
-	TotalSshKeys int `json:"total_ssh_keys"`
-
-	// TotalUsernames Total number of unique usernames
-	TotalUsernames int `json:"total_usernames"`
+	Facets map[string][]Facet `json:"facets"`
 }
 
 // SearchGPGKeysParams defines parameters for SearchGPGKeys.

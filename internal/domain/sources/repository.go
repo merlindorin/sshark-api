@@ -6,12 +6,18 @@ import (
 	"github.com/google/uuid"
 )
 
+type FacetValue struct {
+	Value string
+	Count int
+}
+
+type Facet struct {
+	Type string
+	Data []FacetValue
+}
+
 type Stats struct {
-	TotalKeys      int
-	TotalSSHKeys   int
-	TotalGPGKeys   int
-	TotalUsernames int
-	TotalProviders int
+	Facets map[string][]Facet
 }
 
 type Repository interface {
