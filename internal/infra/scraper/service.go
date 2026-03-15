@@ -1,0 +1,429 @@
+package scraper
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+
+	"github.com/merlindorin/sshark-api/internal/domain/publickeys"
+	"github.com/merlindorin/sshark-api/internal/domain/scraper"
+	"github.com/merlindorin/sshark-api/internal/domain/sources"
+)
+
+// Service implements a continuous scraper that fetches users and their keys.
+type Service struct {
+	logger         *zap.Logger
+	fetcher        scraper.Fetcher
+	sourcesRepo    sources.Repository
+	publickeysRepo publickeys.Repository
+	progressRepo   scraper.ProgressRepository
+
+	// Configuration
+	batchSize int
+	delay     time.Duration
+}
+
+// Config holds scraper configuration.
+type Config struct {
+	BatchSize int           // Number of users to fetch per batch
+	Delay     time.Duration // Delay between batches
+}
+
+// NewService creates a new scraper service.
+func NewService(
+	logger *zap.Logger,
+	fetcher scraper.Fetcher,
+	sourcesRepo sources.Repository,
+	publickeysRepo publickeys.Repository,
+	progressRepo scraper.ProgressRepository,
+	cfg Config,
+) *Service {
+	if cfg.BatchSize <= 0 {
+		cfg.BatchSize = 100
+	}
+	if cfg.Delay <= 0 {
+		cfg.Delay = time.Second
+	}
+	return &Service{
+		logger:         logger.Named("scraper"),
+		fetcher:        fetcher,
+		sourcesRepo:    sourcesRepo,
+		publickeysRepo: publickeysRepo,
+		progressRepo:   progressRepo,
+		batchSize:      cfg.BatchSize,
+		delay:          cfg.Delay,
+	}
+}
+
+// Run starts the continuous scraping loop.
+// It will run until the context is cancelled.
+func (s *Service) Run(ctx context.Context) error {
+	provider := s.fetcher.Provider()
+	s.logger.Info("starting scraper",
+		zap.String("provider", string(provider)),
+		zap.Int("batch_size", s.batchSize),
+		zap.Duration("delay", s.delay),
+	)
+
+	// Load progress
+	progress, err := s.progressRepo.GetProgress(ctx, provider)
+	if err != nil {
+		return fmt.Errorf("cannot load progress data: %w", err)
+	}
+
+	cursor := progress.LastCursor
+	s.logger.Info("resuming from cursor", zap.String("cursor", cursor))
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("scraper stopped")
+			return ctx.Err()
+		default:
+		}
+
+		// Fetch next batch of users
+		page, fetchErr := s.fetcher.ListUsers(ctx, cursor, s.batchSize)
+		if fetchErr != nil {
+			if errors.Is(fetchErr, scraper.ErrRateLimited) {
+				s.logger.Warn("rate limited, waiting...")
+				s.sleep(ctx, time.Minute)
+				continue
+			}
+			s.logger.Error("failed to list users", zap.Error(fetchErr))
+			s.sleep(ctx, s.delay)
+			continue
+		}
+
+		if len(page.Users) == 0 {
+			s.logger.Info("no more users, waiting before restart...")
+			// Reset cursor to start over
+			cursor = ""
+			s.sleep(ctx, time.Hour)
+			continue
+		}
+
+		// Process each user
+		for i := range page.Users {
+			user := &page.Users[i]
+			s.processUser(ctx, user)
+		}
+
+		// Save progress
+		cursor = page.NextCursor
+		progress.LastCursor = cursor
+		if saveErr := s.progressRepo.SaveProgress(ctx, progress); saveErr != nil {
+			s.logger.Error("failed to save progress", zap.Error(saveErr))
+		}
+
+		s.logger.Info("batch completed",
+			zap.Int("users", len(page.Users)),
+			zap.String("next_cursor", cursor),
+		)
+
+		s.sleep(ctx, s.delay)
+	}
+}
+
+func (s *Service) processUser(ctx context.Context, user *scraper.FetchedUser) {
+	// Fetch SSH keys for the user
+	if err := s.fetcher.FetchUserKeys(ctx, user); err != nil {
+		if errors.Is(err, scraper.ErrRateLimited) {
+			s.logger.Warn("rate limited fetching SSH keys", zap.String("username", user.Username))
+			return
+		}
+		s.logger.Warn("failed to fetch SSH keys",
+			zap.String("username", user.Username),
+			zap.Error(err),
+		)
+	}
+
+	// Fetch GPG keys for the user
+	if err := s.fetcher.FetchUserGPGKeys(ctx, user); err != nil {
+		if errors.Is(err, scraper.ErrRateLimited) {
+			s.logger.Warn("rate limited fetching GPG keys", zap.String("username", user.Username))
+		} else {
+			s.logger.Warn("failed to fetch GPG keys",
+				zap.String("username", user.Username),
+				zap.Error(err),
+			)
+		}
+		// Continue - GPG keys are optional
+	}
+
+	// Skip users with no keys at all
+	if len(user.Keys) == 0 && len(user.GPGKeys) == 0 {
+		return
+	}
+
+	// Get or create source
+	source, err := s.getOrCreateSource(ctx, user)
+	if err != nil {
+		s.logger.Error("failed to get/create source",
+			zap.String("username", user.Username),
+			zap.Error(err),
+		)
+		return
+	}
+
+	// Sync SSH keys
+	if len(user.Keys) > 0 {
+		s.syncKeys(ctx, source.ID, user.Keys, publickeys.KeyTypeSSH)
+	}
+
+	// Sync GPG keys
+	if len(user.GPGKeys) > 0 {
+		s.syncKeys(ctx, source.ID, user.GPGKeys, publickeys.KeyTypeGPG)
+	}
+}
+
+func (s *Service) getOrCreateSource(
+	ctx context.Context,
+	user *scraper.FetchedUser,
+) (*sources.Entity, error) {
+	provider := string(s.fetcher.Provider())
+
+	// Try to find existing source
+	source, err := s.sourcesRepo.GetByProviderAndUserID(ctx, provider, user.UserID)
+	if err == nil {
+		// Update if username or URI changed
+		if source.Username != user.Username || source.URI != user.URI {
+			source.Username = user.Username
+			source.URI = user.URI
+			if updateErr := s.sourcesRepo.Update(ctx, source); updateErr != nil {
+				s.logger.Warn("failed to update source", zap.Error(updateErr))
+			}
+		}
+		return source, nil
+	}
+
+	if !errors.Is(err, sources.ErrSourceNotFound) {
+		return nil, err
+	}
+
+	// Create new source
+	source = &sources.Entity{
+		ID:       uuid.New(),
+		Provider: provider,
+		UserID:   user.UserID,
+		Username: user.Username,
+		URI:      user.URI,
+	}
+	if createErr := s.sourcesRepo.Create(ctx, source); createErr != nil {
+		return nil, createErr
+	}
+
+	s.logger.Debug("created source",
+		zap.String("username", user.Username),
+		zap.String("user_id", user.UserID),
+	)
+
+	return source, nil
+}
+
+func (s *Service) syncKeys(
+	ctx context.Context,
+	sourceID uuid.UUID,
+	fetchedKeys []scraper.FetchedKey,
+	keyType publickeys.KeyType,
+) {
+	// Get existing keys for this source and type
+	existingKeys, err := s.publickeysRepo.Search(ctx, publickeys.SearchFilter{
+		SourceID: &sourceID,
+		KeyType:  &keyType,
+	}, 1000, 0)
+	if err != nil {
+		s.logger.Error("failed to get existing keys", zap.Error(err))
+		return
+	}
+
+	// Build fingerprint map of existing keys
+	existingByFingerprint := make(map[string]*publickeys.Entity)
+	for i := range existingKeys.Entities {
+		key := &existingKeys.Entities[i]
+		if key.Fingerprint != "" {
+			existingByFingerprint[key.Fingerprint] = key
+		}
+	}
+
+	// Process fetched keys
+	seenFingerprints := make(map[string]bool)
+	for _, fetchedKey := range fetchedKeys {
+		if fetchedKey.Fingerprint == "" {
+			continue
+		}
+		seenFingerprints[fetchedKey.Fingerprint] = true
+
+		existing, exists := existingByFingerprint[fetchedKey.Fingerprint]
+		if exists {
+			s.updateExistingKey(ctx, existing, fetchedKey, keyType)
+		} else {
+			s.createNewKey(ctx, sourceID, fetchedKey, keyType)
+		}
+	}
+
+	// Remove keys that no longer exist
+	for fingerprint, existing := range existingByFingerprint {
+		if seenFingerprints[fingerprint] {
+			continue
+		}
+		if deleteErr := s.publickeysRepo.Delete(ctx, existing.ID); deleteErr != nil {
+			s.logger.Warn("failed to delete stale key", zap.Error(deleteErr))
+		}
+	}
+}
+
+func (s *Service) updateExistingKey(
+	ctx context.Context,
+	existing *publickeys.Entity,
+	fetchedKey scraper.FetchedKey,
+	keyType publickeys.KeyType,
+) {
+	if !s.keyNeedsUpdate(existing, &fetchedKey, keyType) {
+		s.recordScrapeHistory(ctx, existing.ID, true, false)
+		return
+	}
+
+	existing.KeyData = fetchedKey.KeyData
+
+	switch keyType {
+	case publickeys.KeyTypeSSH:
+		existing.SSHMetadata = &publickeys.SSHMetadata{
+			Algorithm: fetchedKey.Algorithm,
+			Comment:   fetchedKey.Comment,
+			KeyBits:   fetchedKey.KeyBits,
+		}
+	case publickeys.KeyTypeGPG:
+		existing.GPGMetadata = &publickeys.GPGMetadata{
+			Algorithm:    fetchedKey.Algorithm,
+			KeyBits:      fetchedKey.KeyBits,
+			ExpiresAt:    fetchedKey.ExpiresAt,
+			UserIDs:      fetchedKey.UserIDs,
+			Capabilities: fetchedKey.Capabilities,
+		}
+	}
+
+	if updateErr := s.publickeysRepo.Update(ctx, existing); updateErr != nil {
+		s.logger.Warn("failed to update key", zap.Error(updateErr))
+		return
+	}
+
+	s.recordScrapeHistory(ctx, existing.ID, true, true)
+}
+
+func (s *Service) createNewKey(
+	ctx context.Context,
+	sourceID uuid.UUID,
+	fetchedKey scraper.FetchedKey,
+	keyType publickeys.KeyType,
+) {
+	newKey := &publickeys.Entity{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		KeyType:     keyType,
+		KeyData:     fetchedKey.KeyData,
+		Fingerprint: fetchedKey.Fingerprint,
+	}
+
+	switch keyType {
+	case publickeys.KeyTypeSSH:
+		newKey.SSHMetadata = &publickeys.SSHMetadata{
+			Algorithm: fetchedKey.Algorithm,
+			Comment:   fetchedKey.Comment,
+			KeyBits:   fetchedKey.KeyBits,
+		}
+	case publickeys.KeyTypeGPG:
+		newKey.GPGMetadata = &publickeys.GPGMetadata{
+			Algorithm:    fetchedKey.Algorithm,
+			KeyBits:      fetchedKey.KeyBits,
+			ExpiresAt:    fetchedKey.ExpiresAt,
+			UserIDs:      fetchedKey.UserIDs,
+			Capabilities: fetchedKey.Capabilities,
+		}
+	}
+
+	if createErr := s.publickeysRepo.Create(ctx, newKey); createErr != nil {
+		s.logger.Warn("failed to create key", zap.Error(createErr))
+		return
+	}
+
+	s.recordScrapeHistory(ctx, newKey.ID, true, true)
+}
+
+func (s *Service) keyNeedsUpdate(
+	existing *publickeys.Entity,
+	fetched *scraper.FetchedKey,
+	keyType publickeys.KeyType,
+) bool {
+	if string(existing.KeyData) != string(fetched.KeyData) {
+		return true
+	}
+
+	switch keyType {
+	case publickeys.KeyTypeSSH:
+		return s.sshMetadataChanged(existing.SSHMetadata, fetched)
+	case publickeys.KeyTypeGPG:
+		return s.gpgMetadataChanged(existing.GPGMetadata, fetched)
+	}
+
+	return false
+}
+
+func (s *Service) sshMetadataChanged(meta *publickeys.SSHMetadata, fetched *scraper.FetchedKey) bool {
+	if meta == nil {
+		return false
+	}
+	if meta.Algorithm != fetched.Algorithm {
+		return true
+	}
+	if meta.Comment != fetched.Comment {
+		return true
+	}
+	return false
+}
+
+func (s *Service) gpgMetadataChanged(meta *publickeys.GPGMetadata, fetched *scraper.FetchedKey) bool {
+	if meta == nil {
+		return false
+	}
+	if meta.Algorithm != fetched.Algorithm {
+		return true
+	}
+	// Check if expiration changed
+	if (meta.ExpiresAt == nil) != (fetched.ExpiresAt == nil) {
+		return true
+	}
+	if meta.ExpiresAt != nil && fetched.ExpiresAt != nil && !meta.ExpiresAt.Equal(*fetched.ExpiresAt) {
+		return true
+	}
+	return false
+}
+
+func (s *Service) recordScrapeHistory(
+	ctx context.Context,
+	keyID uuid.UUID,
+	success bool,
+	keyChanged bool,
+) {
+	history := &publickeys.ScrapeHistory{
+		ID:         uuid.New(),
+		KeyID:      keyID,
+		ScrapedAt:  time.Now(),
+		Success:    success,
+		KeyChanged: keyChanged,
+	}
+	if histErr := s.publickeysRepo.AddScrapeHistory(ctx, history); histErr != nil {
+		s.logger.Warn("failed to record scrape history", zap.Error(histErr))
+	}
+}
+
+func (s *Service) sleep(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
+}

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS public_keys;
+DROP TYPE IF EXISTS key_type;

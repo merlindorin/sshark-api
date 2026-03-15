@@ -8,7 +8,6 @@ includes:
     goreleaser: .tk/goreleaser/Taskfile.yaml
     install: .tk/install/Taskfile.yaml
     license: .tk/license/Taskfile.yaml
-    
 
 dotenv:
   - .env

@@ -2,7 +2,7 @@ openapi: "3.0.0"
 info:
   version: 1.0.0
   title: SShark Public API
-  description: API for searching and retrieving SSH public keys from various providers
+  description: API for searching and retrieving public keys (SSH and GPG) from various providers
   contact:
     name: API Support
     url: https://sshark.app/doc
@@ -18,11 +18,12 @@ paths:
     get:
       tags:
         - Search
-      summary: Search SSH keys
+      summary: Search public keys
       description: |
-        Search SSH keys by query using RediSearch syntax.
+        Search public keys (SSH and GPG) by query using RediSearch syntax.
         In basic mode, plain text queries are automatically converted to search specified fields.
         In advanced mode, the query must be compatible with Redis query format and supports field-specific queries like `@username:{user1}` or `@type:{ssh-ed25519}`.
+        Use the key_type parameter to filter by key type (ssh or gpg).
       operationId: searchKeys
       parameters:
         - name: query
@@ -79,6 +80,12 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: key_type
+          in: query
+          required: false
+          description: Filter by key type (ssh or gpg). If not specified, returns both types.
+          schema:
+            $ref: '../common/openapi.yaml#/components/schemas/KeyType'
       responses:
         '200':
           description: Search results
@@ -107,37 +114,43 @@ paths:
                       suggestion: "You can use: merlindorin (basic mode), or @username:{merlindorin}, @type:{ssh-ed25519} (advanced mode)"
                     request_id: "550e8400-e29b-41d4-a716-446655440000"
                     documentation_url: "https://sshark.app/doc"
-  /sshkeys/{id}:
+  /publickeys/{id}:
     get:
       tags:
-        - SSH Keys
-      summary: Get SSH key by ID
-      description: Retrieve a specific SSH key by its UUID
-      operationId: getSSHKeyById
+        - Public Keys
+      summary: Get public key by ID
+      description: Retrieve a specific public key (SSH or GPG) by its UUID
+      operationId: getPublicKeyById
       parameters:
         - name: id
           in: path
           required: true
-          description: SSH key UUID
+          description: Public key UUID
           schema:
             type: string
             format: uuid
           example: "550e8400-e29b-41d4-a716-446655440000"
       responses:
         '200':
-          description: SSH key details
+          description: Public key details
           content:
             application/json:
               schema:
-                $ref: '../common/openapi.yaml#/components/schemas/SSHKey'
+                $ref: '../common/openapi.yaml#/components/schemas/PublicKey'
         '400':
           description: Invalid UUID format
           content:
             application/json:
               schema:
                 $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: Public key not found
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
         '500':
-          description: SSH key not found or internal error
+          description: Internal error
           content:
             application/json:
               schema:
@@ -178,8 +191,8 @@ components:
         entities:
           type: array
           items:
-            $ref: '../common/openapi.yaml#/components/schemas/SSHKey'
-          description: List of SSH keys matching the search query
+            $ref: '../common/openapi.yaml#/components/schemas/PublicKey'
+          description: List of public keys matching the search query
         total:
           type: integer
           description: Total number of results matching the query
@@ -223,8 +236,8 @@ components:
 
 tags:
   - name: Search
-    description: Search SSH keys
-  - name: SSH Keys
-    description: SSH key operations
+    description: Search public keys (SSH and GPG)
+  - name: Public Keys
+    description: Public key operations
   - name: Statistics
     description: Aggregated statistics

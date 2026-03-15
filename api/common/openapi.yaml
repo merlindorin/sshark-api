@@ -7,63 +7,132 @@ paths: {}
 
 components:
   schemas:
-    SSHKey:
+    KeyType:
+      type: string
+      description: Type of public key
+      enum:
+        - ssh
+        - gpg
+      example: ssh
+
+    PublicKey:
       type: object
       required:
         - id
-        - username
-        - source
-        - type
-        - key
-        - provider
+        - source_id
+        - key_type
+        - fingerprint
+        - key_data
+        - created_at
         - updated_at
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier for the SSH key
+          description: Unique identifier for the public key
           example: "550e8400-e29b-41d4-a716-446655440000"
-        username:
+        source_id:
           type: string
-          description: Username associated with the SSH key
-          example: merlindorin
-        source:
+          format: uuid
+          description: Reference to the source (provider/user)
+          example: "660e8400-e29b-41d4-a716-446655440001"
+        key_type:
+          $ref: '#/components/schemas/KeyType'
+        fingerprint:
           type: string
-          description: Source URL where the key was fetched
-          example: https://github.com/merlindorin.keys
-        type:
+          description: Key fingerprint
+          example: "SHA256:abcdef1234567890"
+        key_data:
           type: string
-          description: SSH key type
-          enum:
-            - ssh-rsa
-            - ssh-ed25519
-            - ecdsa-sha2-nistp256
-            - ecdsa-sha2-nistp384
-            - ecdsa-sha2-nistp521
-          example: ssh-ed25519
-        comment:
+          description: Raw key data
+        created_at:
           type: string
-          description: Comment from the SSH key
-          example: user@hostname
-        options:
-          type: array
-          items:
-            type: string
-          description: SSH key options
-          example: [ ]
-        key:
-          type: string
-          format: byte
-          description: SSH public key bytes
-        provider:
-          type: string
-          description: Provider name
-          example: github
+          format: date-time
+          description: Creation timestamp
+          example: "2024-01-17T00:00:00Z"
         updated_at:
           type: string
           format: date-time
           description: Last update timestamp
           example: "2024-01-17T00:00:00Z"
+        ssh_metadata:
+          $ref: '#/components/schemas/SSHMetadata'
+        gpg_metadata:
+          $ref: '#/components/schemas/GPGMetadata'
+        source:
+          $ref: '#/components/schemas/Source'
+
+    SSHMetadata:
+      type: object
+      description: SSH key specific metadata
+      properties:
+        algorithm:
+          type: string
+          description: SSH key algorithm
+          example: ssh-ed25519
+        comment:
+          type: string
+          description: Comment from the SSH key
+          example: user@hostname
+        key_bits:
+          type: integer
+          description: Key size in bits
+          example: 256
+
+    GPGMetadata:
+      type: object
+      description: GPG key specific metadata
+      properties:
+        algorithm:
+          type: string
+          description: GPG key algorithm
+          example: RSA
+        key_bits:
+          type: integer
+          description: Key size in bits
+          example: 4096
+        expires_at:
+          type: string
+          format: date-time
+          description: Key expiration date
+          example: "2025-01-17T00:00:00Z"
+        user_ids:
+          type: array
+          items:
+            type: string
+          description: GPG user IDs (usually email addresses)
+          example: ["user@example.com"]
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Key capabilities (sign, certify, encrypt_comms, encrypt_storage, authenticate)
+          example: ["sign", "certify"]
+
+    Source:
+      type: object
+      description: Key source information
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Source identifier
+        provider:
+          type: string
+          description: Provider name
+          example: github
+        user_id:
+          type: string
+          description: Provider user ID
+          example: "12345"
+        username:
+          type: string
+          description: Username
+          example: merlindorin
+        uri:
+          type: string
+          description: Source URL
+          example: https://github.com/merlindorin
 
     ErrorResponse:
       type: object

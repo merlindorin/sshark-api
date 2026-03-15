@@ -54,4 +54,7 @@ type Repository interface {
 		provider string,
 		entities *[]Entity,
 	) error
+
+	// ValidateQuery validates a search query and returns the parsed query or an error.
+	ValidateQuery(ctx context.Context, query string) (string, error)
 }

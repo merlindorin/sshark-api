@@ -9,74 +9,26 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Redis Stack subchart configuration
-# WARNING: The redis-stack subchart does NOT support persistence by default.
-# Data will be lost on pod restart. For production, either:
-# 1. Use an external Redis with persistence (set redis-stack.enabled: false and configure redis.host)
-# 2. Add your own PVC and volumeMounts to the redis-stack deployment
-redis-stack:
-  enabled: true
+# PostgreSQL connection configuration
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: ""
+  database: "sshark"
+  sslMode: "disable"
+  maxConns: 10
+  minConns: 2
+  # Use existing secret for PostgreSQL password (recommended for production)
+  existingSecret: ""
+  existingSecretPasswordKey: "postgres-password"
 
-# Dragonfly configuration (alternative to redis-stack)
-# Requires dragonfly-operator to be installed in the cluster
-# See: https://github.com/dragonflydb/dragonfly-operator
-dragonfly:
-  enabled: false
-  # Number of Dragonfly replicas
-  replicas: 1
-  # Resource requests and limits
-  resources:
-    requests:
-      cpu: 500m
-      memory: 500Mi
-    limits:
-      cpu: 600m
-      memory: 750Mi
-  # Storage configuration for persistence
-  storage:
-    # Enable persistent storage (uses auto-provisioned PVC)
-    enabled: true
-    # Storage size for the PVC
-    size: 1Gi
-    # Storage class name (leave empty to use default)
-    storageClassName: ""
-    # Use an existing PVC instead of creating one
-    existingPersistentVolumeClaimName: ""
-  # Scheduled snapshot configuration (optional)
-  snapshot:
-    # Enable periodic snapshots
-    enabled: false
-    # Cron schedule for snapshots (e.g., "0 */6 * * *" for every 6 hours)
-    cron: ""
-  # Additional arguments to pass to Dragonfly
-  args: []
-  # Skip assigning FSGroup to the pod security context
-  skipFSGroup: false
-  # Annotations to add to the Dragonfly resource
-  annotations: {}
-  # Node selector for Dragonfly pods
-  nodeSelector: {}
-
-# Migration hook configuration
+# Migration configuration
 migration:
   # Enable pre-install/pre-upgrade migration hook
-  # The migration hook creates RediSearch indexes before the application starts
   enabled: true
-
-# Redis connection configuration
-# When redis-stack.enabled is true, host is auto-configured to the subchart service
-# When dragonfly.enabled is true, host is auto-configured to the dragonfly service
-redis:
-  # Only used when redis-stack.enabled and dragonfly.enabled are both false
-  host: ""
-  port: 6379
-  password: ""
-  db: 0
-  # Set to true to force recreating the search index on startup
-  # This only rebuilds the index, not the underlying data
-  forceReindex: false
-  existingSecret: ""
-  existingSecretPasswordKey: "redis-password"
+  # Path to migrations directory in the container
+  migrationsPath: "db/migrations"
 
 # Clerk authentication configuration
 clerk:
@@ -168,71 +120,39 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# Multi-provider scraper configuration
-# Each provider can have its own scraper deployment
-scrapers:
-  github:
-    enabled: false
-    rateLimit: 1.8
-    batchSize: 100
-    # GitHub API token (optional, highly recommended to avoid rate limits)
-    # If set, a secret will be automatically created.
-    # For production, use existingSecret instead.
-    token: ""
-    # Use existing secret for GitHub token (recommended for production)
-    # When using existingSecret, the token field above is ignored
-    existingSecret: ""
-    existingSecretKey: "github-token"
-    podAnnotations: {}
-    podLabels: {}
-    resources:
-      limits:
-        cpu: 100m
-        memory: 128Mi
-      requests:
-        cpu: 50m
-        memory: 64Mi
-    nodeSelector: {}
-    tolerations: []
-    affinity: {}
-
-  gitlab:
-    enabled: false
-    rateLimit: 1.0
-    batchSize: 100
-    # GitLab API token (required if enabled)
-    # If set, a secret will be automatically created.
-    # For production, use existingSecret instead.
-    token: ""
-    # Use existing secret for GitLab token (recommended for production)
-    # When using existingSecret, the token field above is ignored
-    existingSecret: ""
-    existingSecretKey: "gitlab-token"
-    podAnnotations: {}
-    podLabels: {}
-    resources:
-      limits:
-        cpu: 100m
-        memory: 128Mi
-      requests:
-        cpu: 50m
-        memory: 64Mi
-    nodeSelector: {}
-    tolerations: []
-    affinity: {}
+# Scraper configuration (continuous service)
+scraper:
+  # Enable scraper deployment
+  enabled: false
+  # Provider to scrape (github, gitlab)
+  provider: "github"
+  # Number of users to fetch per batch
+  batchSize: 100
+  # Delay between batches in milliseconds
+  delay: 1000
+  # GitHub API token (use existingSecret in production)
+  githubToken: ""
+  # GitLab API token (use existingSecret in production)
+  gitlabToken: ""
+  # Use existing secret for API tokens
+  existingSecret: ""
+  existingSecretGithubKey: "github-token"
+  existingSecretGitlabKey: "gitlab-token"
+  # Resource limits for scraper
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 
 # Grafana dashboard configuration (for grafana-operator)
 grafana:
   dashboard:
-    # Enable the Grafana dashboard
     enabled: false
-    # Prometheus datasource UID in your Grafana instance
-    # Find this in Grafana: Settings > Data Sources > Prometheus > UID
     datasourceUID: ""
-    # Optional: Grafana instance selector (labels to match your Grafana CR)
-    # Example: { matchLabels: { dashboards: "grafana" } }
     instanceSelector:
       matchLabels:
         dashboards: "grafana"
-    # Optional: Folder name in Grafana to organize the dashboard
     folderName: ""

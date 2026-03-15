@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,119 +15,135 @@ import (
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/merlindorin/go-shared/pkg/cmd"
-	"github.com/merlindorin/sshark-api/api/authenticated"
-	v2 "github.com/merlindorin/sshark-api/api/authenticated/v1"
-	"github.com/merlindorin/sshark-api/api/private"
-	v3 "github.com/merlindorin/sshark-api/api/private/v1"
-	"github.com/merlindorin/sshark-api/api/public"
-	v1 "github.com/merlindorin/sshark-api/api/public/v1"
-	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
-	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
-	"github.com/merlindorin/sshark-api/internal/metrics"
-	"github.com/merlindorin/sshark-api/internal/middleware"
-	"github.com/merlindorin/sshark-api/internal/otel"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
+
+	apiAuthenticatedV1 "github.com/merlindorin/sshark-api/api/authenticated/v1"
+	apiPrivateV1 "github.com/merlindorin/sshark-api/api/private/v1"
+	apiPublicV1 "github.com/merlindorin/sshark-api/api/public/v1"
+
+	apiAuthenticated "github.com/merlindorin/sshark-api/api/authenticated"
+	apiPrivate "github.com/merlindorin/sshark-api/api/private"
+	apiPublic "github.com/merlindorin/sshark-api/api/public"
+
+	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
+	publickeysrepo "github.com/merlindorin/sshark-api/internal/infra/publickeys/postgres"
+	sourcesrepo "github.com/merlindorin/sshark-api/internal/infra/sources/postgres"
+	"github.com/merlindorin/sshark-api/internal/middleware"
+	"github.com/merlindorin/sshark-api/internal/otel"
+)
+
+const (
+	apiPath = "/api/v1"
 )
 
 type Serve struct {
-	Host string `env:"HOST" help:"Host to bind the server to" default:"0.0.0.0"`
-	Port int    `env:"PORT" help:"Port to bind the server to" default:"8080"`
-
-	ClerkToken string `env:"CLERK_TOKEN" help:"Clerk to use for auth"`
-
-	Timeout time.Duration `default:"5s" help:"HTTP request timeout"`
+	ClerkToken string        `env:"CLERK_TOKEN" help:"Clerk to use for auth"`
+	Timeout    time.Duration `default:"5s" help:"HTTPServer request timeout"`
 }
 
-func (s *Serve) Addr() string {
-	return fmt.Sprintf("%s:%d", s.Host, s.Port)
-}
+func (s *Serve) Run(
+	ctx context.Context,
+	common *cmd.Commons,
+	postgres *globals.Postgres,
+	httpServer *globals.HTTPServer,
+	gotel *globals.MetricServer,
+) error {
+	name := common.Version.Name()
+	version := common.Version.Version()
+	namedLogger := common.MustLogger().Named(name)
+	serverAddr := httpServer.Addr()
+	development := common.Development
 
-func (s *Serve) Run(ctx context.Context, common *cmd.Commons, redis *globals.Redis) error {
-	logger := common.MustLogger().Named("server")
-
-	logger.Info(
+	namedLogger.Info(
 		"Starting server...",
-		zap.String("name", common.Version.Name()),
-		zap.String("version", common.Version.Version()),
-		zap.String("address", s.Addr()),
-		zap.String("redis.address", redis.Addr()),
-		zap.Int("redis.db", redis.DB),
+		zap.String("name", name),
+		zap.String("version", version),
+		zap.String("address", serverAddr),
+		zap.Bool("development", development),
+		zap.String("postgres.host", postgres.Host),
+		zap.String("postgres.database", postgres.Database),
 		zap.String("gin.version", gin.Version),
 	)
 
-	meterProvider, err := otel.InitMeterProvider("sshark-api", common.Version.Version())
+	pool, err := postgres.Pool(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to initialize meter provider: %w", err)
+		return fmt.Errorf("failed to connect to postgres: %w", err)
 	}
-	defer func() {
-		if shutdownErr := meterProvider.Shutdown(context.Background()); shutdownErr != nil {
-			logger.Error("failed to shutdown meter provider", zap.Error(shutdownErr))
-		}
-	}()
+	defer pool.Close()
 
-	if err = metrics.InitMetrics(); err != nil {
-		return fmt.Errorf("failed to initialize metrics: %w", err)
-	}
-
-	redisClient := redis.Client()
 	clerk.SetKey(s.ClerkToken)
+	gin.SetMode(getGinMode(development))
 
-	if !common.Development {
-		gin.SetMode(gin.ReleaseMode)
+	sourcesRepo := sourcesrepo.NewRepository(pool)
+	publickeysRepo := publickeysrepo.NewRepository(pool)
+
+	router := gin.New()
+	router.Use(otelgin.Middleware(name))
+	router.Use(timeout.New(timeout.WithTimeout(s.Timeout)))
+	router.Use(requestid.New())
+	router.Use(ginzap.Ginzap(namedLogger, time.RFC3339, true))
+	router.Use(ginzap.RecoveryWithZap(namedLogger, true))
+	router.Use(middleware.ErrorHandler(namedLogger))
+
+	gotel.Mount(router)
+
+	apiPrivateV1Handler := apiPrivateV1.NewServer(namedLogger)
+	apiPrivate.RegisterHandlers(router, apiPrivateV1Handler)
+
+	apiPublicV1Handler := apiPublicV1.NewServer(namedLogger, sourcesRepo, publickeysRepo)
+	apiPublic.RegisterHandlers(router.Group(apiPath), apiPublicV1Handler)
+
+	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(namedLogger)
+	apiAuthenticated.RegisterHandlers(router.Group(apiPath, middleware.RequireAuth()), apiAuthenticatedV1Handler)
+
+	errs, ctx := errgroup.WithContext(ctx)
+	errs.Go(waitForShutdownSignal(ctx))
+	errs.Go(runMeterProvider(ctx, name, version, namedLogger))
+	errs.Go(httpServer.Start(ctx, namedLogger, router))
+
+	if waitErr := errs.Wait(); waitErr != nil {
+		namedLogger.Info("Shutting down", zap.Error(waitErr))
 	}
 
-	r := gin.New()
-	r.Use(otelgin.Middleware("sshark-api"))
-	r.Use(timeout.New(timeout.WithTimeout(s.Timeout)))
-	r.Use(requestid.New())
-	r.Use(ginzap.Ginzap(logger, time.RFC3339, true))
-	r.Use(ginzap.RecoveryWithZap(logger, true))
-	r.Use(middleware.ErrorHandler(logger))
+	return nil
+}
 
-	srepo := sshkeysrepository.NewRedisRepository(redisClient)
-
-	collector := metrics.NewCollector(srepo, logger.Named("metrics"), 30*time.Second)
-	if err = collector.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start metrics collector: %w", err)
-	}
-
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-
-	requireAuthMiddleware := middleware.RequireAuth()
-
-	private.RegisterHandlers(r, v3.NewServer(logger.Named("internal api")))
-	public.RegisterHandlers(r.Group("/api/v1"), v1.NewServer(logger.Named("public api"), srepo))
-	authenticated.RegisterHandlers(
-		r.Group("/api/v1", requireAuthMiddleware),
-		v2.NewServer(logger.Named("authenticated api")),
-	)
-
-	errCh := make(chan error, 1)
-	term := make(chan os.Signal, 1)
-	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		logger.Info("HTTP server listening", zap.String("address", s.Addr()))
-
-		server := &http.Server{
-			Handler:           r,
-			Addr:              s.Addr(),
-			ReadHeaderTimeout: 5 * time.Second,
+func runMeterProvider(ctx context.Context, name, version string, logger *zap.Logger) func() error {
+	return func() error {
+		meterProvider, err := otel.InitMeterProvider(name, version)
+		if err != nil {
+			return fmt.Errorf("failed to initialize meter provider: %w", err)
 		}
 
-		if runErr := server.ListenAndServe(); runErr != nil && !errors.Is(runErr, http.ErrServerClosed) {
-			errCh <- runErr
+		<-ctx.Done()
+		if err = meterProvider.Shutdown(context.Background()); err != nil {
+			logger.Error("failed to shutdown meter provider", zap.Error(err))
+			return err
 		}
-	}()
 
-	select {
-	case <-term:
-		logger.Info("Received SIGTERM, shutting down gracefully...")
 		return nil
-	case serverErr := <-errCh:
-		logger.Error("Server error", zap.Error(serverErr))
-		return fmt.Errorf("server error: %w", serverErr)
 	}
+}
+
+func waitForShutdownSignal(ctx context.Context) func() error {
+	return func() error {
+		term := make(chan os.Signal, 1)
+		signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-term:
+			return errors.New("received shutdown signal")
+		}
+	}
+}
+
+func getGinMode(development bool) string {
+	if development {
+		return gin.DebugMode
+	}
+
+	return gin.ReleaseMode
 }

@@ -4,21 +4,29 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/merlindorin/sshark-api/api/common"
 	"go.uber.org/zap"
 
-	"github.com/merlindorin/sshark-api/internal/domain/stats"
+	"github.com/merlindorin/sshark-api/api/common"
+	"github.com/merlindorin/sshark-api/internal/domain/publickeys"
 )
 
-// Stats returns a handler that retrieves aggregated statistics.
-func Stats(c *gin.Context, logger *zap.Logger, repo stats.Repository) {
-	result := &stats.Stats{}
+type StatsResponse struct {
+	TotalKeys int `json:"total_keys"`
+}
 
-	if err := repo.GetStats(c.Request.Context(), result); err != nil {
-		logger.Info("failed to get stats", zap.Error(err))
+// Stats returns aggregated statistics.
+func Stats(c *gin.Context, logger *zap.Logger, repo publickeys.Repository) {
+	ctx := c.Request.Context()
+
+	// Get total count via search with no filter
+	result, err := repo.Search(ctx, publickeys.SearchFilter{}, 0, 0)
+	if err != nil {
+		logger.Error("failed to get stats", zap.Error(err))
 		_ = c.Error(common.InternalError(c))
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, StatsResponse{
+		TotalKeys: result.Total,
+	})
 }

@@ -2,60 +2,77 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/url"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // postgres driver for migrate
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // file source for migrate
 	"github.com/merlindorin/go-shared/pkg/cmd"
 	"go.uber.org/zap"
 
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
-	githubrepository "github.com/merlindorin/sshark-api/internal/infra/github/redis"
-	gitlabrepository "github.com/merlindorin/sshark-api/internal/infra/gitlab/redis"
-	sshkeysrepository "github.com/merlindorin/sshark-api/internal/infra/sshkeys/redis"
 )
 
 type Migrate struct {
-	ForceReindex bool `help:"Force recreation of index" default:"true"`
+	MigrationsPath string `help:"Path to migrations directory" default:"db/migrations"`
 }
 
-func (s *Migrate) Run(ctx context.Context, common *cmd.Commons, redis *globals.Redis) error {
-	logger := common.MustLogger().Named("server")
+func (m *Migrate) Run(_ context.Context, common *cmd.Commons, postgres *globals.Postgres) error {
+	logger := common.MustLogger().Named("migrate")
 
 	logger.Info(
-		"Migrating...",
+		"Running migrations...",
 		zap.String("name", fmt.Sprintf("%s-migration", common.Version.Name())),
 		zap.String("version", common.Version.Version()),
-		zap.String("redis.address", redis.Addr()),
-		zap.Int("redis.db", redis.DB),
+		zap.String("postgres.host", postgres.Host),
+		zap.String("postgres.database", postgres.Database),
+		zap.String("migrations_path", m.MigrationsPath),
 	)
 
-	redisClient := redis.Client()
+	hostPort := net.JoinHostPort(postgres.Host, fmt.Sprintf("%d", postgres.Port))
+	dsn := (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(postgres.User, postgres.Password),
+		Host:     hostPort,
+		Path:     postgres.Database,
+		RawQuery: "sslmode=" + postgres.SSLMode,
+	}).String()
 
-	srepo := sshkeysrepository.NewRedisRepository(redisClient)
-	githubRepo := githubrepository.NewRepository(redisClient)
-	gitlabRepo := gitlabrepository.NewRepository(redisClient)
-
-	err := srepo.EnsureIndex(ctx, s.ForceReindex)
+	migrator, err := migrate.New(
+		fmt.Sprintf("file://%s", m.MigrationsPath),
+		dsn,
+	)
 	if err != nil {
-		return fmt.Errorf("failed to ensure SSH keys index: %w", err)
+		return fmt.Errorf("failed to create migrator: %w", err)
 	}
 
-	err = githubRepo.EnsureIndex(ctx, s.ForceReindex)
-	if err != nil {
-		return fmt.Errorf("failed to ensure GitHub users index: %w", err)
+	defer func(migrator *migrate.Migrate) {
+		errMigrator, _ := migrator.Close()
+		if errMigrator != nil {
+			err = errors.Join(err, fmt.Errorf("failed to close migrator: %w", errMigrator))
+		}
+	}(migrator)
+
+	upErr := migrator.Up()
+	if upErr != nil {
+		if errors.Is(upErr, migrate.ErrNoChange) {
+			logger.Info("No migrations to apply")
+			return nil
+		}
+		return fmt.Errorf("failed to run migrations: %w", upErr)
 	}
 
-	err = gitlabRepo.EnsureIndex(ctx, s.ForceReindex)
+	version, dirty, err := migrator.Version()
 	if err != nil {
-		return fmt.Errorf("failed to ensure GitLab users index: %w", err)
-	}
-
-	logger.Info("Initializing stats counters...")
-	err = srepo.InitializeStatsCounters(ctx)
-	if err != nil {
-		logger.Warn("Failed to initialize stats counters", zap.Error(err))
-		// Don't fail migration if stats initialization fails
+		logger.Warn("Failed to get migration version", zap.Error(err))
 	} else {
-		logger.Info("Stats counters initialized successfully")
+		logger.Info("Migrations applied successfully",
+			zap.Uint("version", version),
+			zap.Bool("dirty", dirty),
+		)
 	}
 
 	return nil

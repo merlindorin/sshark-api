@@ -1,149 +1,103 @@
-{{- range $provider, $config := .Values.scrapers }}
-{{- if $config.enabled }}
----
+{{- if .Values.scraper.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sshark-api.fullname" $ }}-scraper-{{ $provider }}
+  name: {{ include "sshark-api.fullname" . }}-scraper
   labels:
-    {{- include "sshark-api.labels" $ | nindent 4 }}
+    {{- include "sshark-api.labels" . | nindent 4 }}
     app.kubernetes.io/component: scraper
-    app.kubernetes.io/provider: {{ $provider }}
 spec:
   replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
-      {{- include "sshark-api.selectorLabels" $ | nindent 6 }}
+      {{- include "sshark-api.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: scraper
-      app.kubernetes.io/provider: {{ $provider }}
   template:
     metadata:
-      annotations:
-        {{- if $.Values.metrics.enabled }}
-        prometheus.io/scrape: "true"
-        prometheus.io/path: {{ $.Values.metrics.path }}
-        prometheus.io/port: "8080"
-        metrics.grafana.com/scrape: "true"
-        metrics.grafana.com/path: {{ $.Values.metrics.path }}
-        metrics.grafana.com/port: "8080"
-        {{- end }}
-        {{- with $config.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
       labels:
-        {{- include "sshark-api.labels" $ | nindent 8 }}
+        {{- include "sshark-api.labels" . | nindent 8 }}
         app.kubernetes.io/component: scraper
-        app.kubernetes.io/provider: {{ $provider }}
-        {{- with $config.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
     spec:
-      {{- with $.Values.imagePullSecrets }}
+      {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "sshark-api.serviceAccountName" $ }}
-      {{- with $.Values.podSecurityContext }}
+      serviceAccountName: {{ include "sshark-api.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: {{ $.Chart.Name }}-scraper-{{ $provider }}
-          {{- with $.Values.securityContext }}
+        - name: scraper
+          {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
-          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - scrape
-            - --provider
-            - {{ $provider }}
-            - --rate-limit
-            - {{ $config.rateLimit | quote }}
-            - --batch-size
-            - {{ $config.batchSize | quote }}
+            - --provider={{ .Values.scraper.provider }}
+            - --batch-size={{ .Values.scraper.batchSize }}
+            - --delay={{ .Values.scraper.delay }}
           env:
-            - name: REDIS_HOST
-              {{- if $.Values.dragonfly.enabled }}
-              value: "{{ include "sshark-api.fullname" $ }}-dragonfly"
-              {{- else if index $.Values "redis-stack" "enabled" }}
-              value: "redis-stack"
-              {{- else }}
-              value: {{ $.Values.redis.host | quote }}
-              {{- end }}
-            - name: REDIS_PORT
-              value: {{ $.Values.redis.port | quote }}
-            - name: REDIS_DB
-              value: {{ $.Values.redis.db | quote }}
-            {{- if $.Values.redis.existingSecret }}
-            - name: REDIS_PASSWORD
+            - name: POSTGRES_HOST
+              value: {{ .Values.postgres.host | quote }}
+            - name: POSTGRES_PORT
+              value: {{ .Values.postgres.port | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_DATABASE
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_SSL_MODE
+              value: {{ .Values.postgres.sslMode | quote }}
+            {{- if .Values.postgres.existingSecret }}
+            - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.redis.existingSecret }}
-                  key: {{ $.Values.redis.existingSecretPasswordKey }}
-            {{- else if $.Values.redis.password }}
-            - name: REDIS_PASSWORD
-              value: {{ $.Values.redis.password | quote }}
+                  name: {{ .Values.postgres.existingSecret }}
+                  key: {{ .Values.postgres.existingSecretPasswordKey }}
+            {{- else if .Values.postgres.password }}
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.postgres.password | quote }}
             {{- end }}
-            {{- if eq $provider "github" }}
-            {{- if or $config.token $config.existingSecret }}
+            {{- if .Values.scraper.existingSecret }}
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  {{- if $config.existingSecret }}
-                  name: {{ $config.existingSecret }}
-                  key: {{ $config.existingSecretKey }}
-                  {{- else }}
-                  name: {{ include "sshark-api.fullname" $ }}-github-token
-                  key: github-token
-                  {{- end }}
-            {{- end }}
-            {{- end }}
-            {{- if eq $provider "gitlab" }}
+                  name: {{ .Values.scraper.existingSecret }}
+                  key: {{ .Values.scraper.existingSecretGithubKey }}
+                  optional: true
             - name: GITLAB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  {{- if $config.existingSecret }}
-                  name: {{ $config.existingSecret }}
-                  key: {{ $config.existingSecretKey }}
-                  {{- else }}
-                  name: {{ include "sshark-api.fullname" $ }}-gitlab-token
-                  key: gitlab-token
-                  {{- end }}
+                  name: {{ .Values.scraper.existingSecret }}
+                  key: {{ .Values.scraper.existingSecretGitlabKey }}
+                  optional: true
+            {{- else }}
+            {{- if .Values.scraper.githubToken }}
+            - name: GITHUB_TOKEN
+              value: {{ .Values.scraper.githubToken | quote }}
             {{- end }}
-          ports:
-            - name: metrics
-              containerPort: 8080
-              protocol: TCP
-          {{- with $config.resources }}
+            {{- if .Values.scraper.gitlabToken }}
+            - name: GITLAB_TOKEN
+              value: {{ .Values.scraper.gitlabToken | quote }}
+            {{- end }}
+            {{- end }}
+          {{- with .Values.scraper.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $.Values.volumeMounts }}
-          volumeMounts:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-      {{- with $.Values.volumes }}
-      volumes:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if $config.nodeSelector }}
-      nodeSelector:
-        {{- toYaml $config.nodeSelector | nindent 8 }}
-      {{- else if $.Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml $.Values.nodeSelector | nindent 8 }}
-      {{- end }}
-      {{- with $config.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with $config.tolerations }}
+      {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-{{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}
