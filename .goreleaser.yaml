@@ -76,13 +76,15 @@ dockers:
   - image_templates:
       - 'ghcr.io/merlindorin/sshark-api:{{ .Tag }}'
     dockerfile: Dockerfile
+    extra_files:
+      - db/migrations
     build_flag_templates:
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.name={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.description=Project description..."
+      - "--label=org.opencontainers.image.description=SSH and GPG public key lookup API"
       - "--label=org.opencontainers.image.source=https://github.com/merlindorin/sshark-api"
 
 # signs our docker image
