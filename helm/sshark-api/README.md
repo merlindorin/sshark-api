@@ -1,6 +1,6 @@
 # SSHark API Helm Chart
 
-SSH public key lookup service that fetches and caches GitHub SSH keys.
+SSH and GPG public key lookup service that fetches and caches keys from GitHub and GitLab.
 
 ## Installation
 
@@ -10,62 +10,47 @@ helm install sshark-api ./helm/sshark-api
 
 ## Configuration
 
-### Redis Backend
+### PostgreSQL Backend
 
-The chart supports three Redis backend options:
+The chart requires a PostgreSQL database for storage.
 
-#### 1. Redis Stack (Default)
-
-```yaml
-redis-stack:
-  enabled: true
-```
-
-**Warning:** The redis-stack subchart does NOT support persistence by default. Data will be lost on pod restart.
-
-#### 2. Dragonfly
-
-Requires [dragonfly-operator](https://github.com/dragonflydb/dragonfly-operator) to be installed.
+#### External PostgreSQL (Recommended)
 
 ```yaml
-redis-stack:
-  enabled: false
-
-dragonfly:
-  enabled: true
-  replicas: 1
-  storage:
-    enabled: true
-    size: 1Gi
+postgres:
+  host: "postgres.example.com"
+  port: 5432
+  user: "sshark"
+  database: "sshark"
+  sslMode: "require"
+  existingSecret: "postgres-credentials"
+  existingSecretPasswordKey: "password"
 ```
 
-#### 3. External Redis
+#### Direct Configuration (Development)
 
 ```yaml
-redis-stack:
-  enabled: false
-
-dragonfly:
-  enabled: false
-
-redis:
-  host: "my-redis.example.com"
-  port: 6379
-  password: "secret"
-  db: 0
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "mysecret"
+  database: "sshark"
+  sslMode: "disable"
 ```
 
-### GitHub Scraper
+### Scraper
 
-The scraper progressively fetches all GitHub users and their SSH keys with rate limiting and progress tracking.
+The scraper fetches public keys from GitHub/GitLab users with rate limiting and progress tracking.
 
 #### Enable the Scraper
 
 ```yaml
 scraper:
   enabled: true
-  rateLimit: 2.0    # Requests per second to GitHub API
-  batchSize: 100    # Number of users to fetch per API call
+  provider: "github"    # or "gitlab"
+  batchSize: 100
+  delay: "1s"
 ```
 
 #### Scraper Resources
@@ -81,77 +66,61 @@ scraper:
       memory: 64Mi
 ```
 
-#### How It Works
+#### API Tokens
 
-1. **Progressive Scraping**: Fetches users from GitHub's `/users` API endpoint with pagination
-2. **Rate Limiting**: Respects configurable rate limits (default: 2 req/s)
-3. **Progress Tracking**: Stores last processed user ID in Redis (`sshark:scraper:last_user_id`)
-4. **Resumable**: Automatically resumes from last position after restart
-5. **Graceful Shutdown**: Handles SIGTERM/SIGINT and saves progress before exiting
+For GitHub (optional but recommended for higher rate limits):
 
-The scraper runs as a single replica deployment with `Recreate` strategy to ensure only one instance is running at a time.
+```yaml
+scraper:
+  githubToken: "ghp_xxxx"
+  # Or use existing secret (recommended):
+  existingSecret: "scraper-tokens"
+  existingSecretGithubKey: "github-token"
+```
+
+For GitLab (required):
+
+```yaml
+scraper:
+  gitlabToken: "glpat-xxxx"
+  # Or use existing secret (recommended):
+  existingSecret: "scraper-tokens"
+  existingSecretGitlabKey: "gitlab-token"
+```
 
 ### Grafana Dashboard
 
 The chart includes an optional Grafana dashboard that works with [Grafana Operator](https://github.com/grafana-operator/grafana-operator).
 
-#### Prerequisites
-
-1. Grafana Operator installed in your cluster
-2. A Grafana instance (Grafana CR) running
-3. Prometheus datasource configured in Grafana
-4. ServiceMonitor enabled to scrape metrics
-
-#### Enable the Dashboard
-
-1. Find your Prometheus datasource UID in Grafana:
-   - Go to: **Settings → Data Sources → Prometheus**
-   - Copy the **UID** (e.g., `eed2ceb1-51e5-471e-950f-beab8421a126`)
-
-2. Enable the dashboard:
-
 ```yaml
 grafana:
   dashboard:
     enabled: true
-    datasourceUID: "eed2ceb1-51e5-471e-950f-beab8421a126"  # Your Prometheus UID
+    datasourceUID: "prometheus-uid"
     instanceSelector:
       matchLabels:
-        dashboards: "grafana"  # Labels matching your Grafana CR
-    folderName: "SSHark"  # Optional: organize in a folder
+        dashboards: "grafana"
+    folderName: "SSHark"
 ```
-
-3. Install or upgrade:
-
-```bash
-helm upgrade --install sshark-api ./helm/sshark-api \
-  --set grafana.dashboard.enabled=true \
-  --set grafana.dashboard.datasourceUID=YOUR-DATASOURCE-UID
-```
-
-#### Dashboard Features
-
-- **Statistics**: Total keys, providers, and usernames
-- **Scraper Activity**: Users processed/ingested rates, position tracking
-- **Error Tracking**: Fetch and ingest error rates
-- **Performance**: Duration, rate limit wait time, batch size (p50, p95, p99)
-
-Auto-refresh: 30 seconds | Default range: Last 6 hours
 
 ## Common Configurations
 
 ### Basic Installation
 
 ```bash
-helm install sshark-api ./helm/sshark-api
+helm install sshark-api ./helm/sshark-api \
+  --set postgres.host=postgres.default.svc \
+  --set postgres.password=secret
 ```
 
 ### With Scraper Enabled
 
 ```bash
 helm install sshark-api ./helm/sshark-api \
+  --set postgres.host=postgres.default.svc \
+  --set postgres.password=secret \
   --set scraper.enabled=true \
-  --set scraper.rateLimit=1.5
+  --set scraper.provider=github
 ```
 
 ### With Ingress
@@ -188,17 +157,20 @@ autoscaling:
 | `replicaCount` | int | `1` | Number of API replicas |
 | `image.repository` | string | `"ghcr.io/merlindorin/sshark-api"` | Image repository |
 | `image.tag` | string | `""` | Image tag (defaults to chart appVersion) |
-| `scraper.enabled` | bool | `false` | Enable GitHub scraper deployment |
-| `scraper.rateLimit` | float | `2.0` | GitHub API rate limit (req/s) |
+| `postgres.host` | string | `"localhost"` | PostgreSQL host |
+| `postgres.port` | int | `5432` | PostgreSQL port |
+| `postgres.user` | string | `"postgres"` | PostgreSQL user |
+| `postgres.password` | string | `""` | PostgreSQL password |
+| `postgres.database` | string | `"sshark"` | PostgreSQL database |
+| `postgres.sslMode` | string | `"disable"` | PostgreSQL SSL mode |
+| `postgres.existingSecret` | string | `""` | Existing secret for PostgreSQL password |
+| `scraper.enabled` | bool | `false` | Enable scraper deployment |
+| `scraper.provider` | string | `"github"` | Provider to scrape (github/gitlab) |
 | `scraper.batchSize` | int | `100` | Users to fetch per API call |
-| `redis-stack.enabled` | bool | `true` | Enable Redis Stack subchart |
-| `dragonfly.enabled` | bool | `false` | Enable Dragonfly |
-| `redis.host` | string | `""` | External Redis host |
-| `redis.port` | int | `6379` | Redis port |
-| `redis.password` | string | `""` | Redis password |
-| `redis.db` | int | `0` | Redis database number |
+| `scraper.delay` | string | `"1s"` | Delay between batches |
 | `grafana.dashboard.enabled` | bool | `false` | Enable Grafana dashboard |
-| `grafana.dashboard.datasourceUID` | string | `""` | Prometheus datasource UID in Grafana |
+| `grafana.dashboard.datasourceUID` | string | `""` | Prometheus datasource UID |
 | `metrics.enabled` | bool | `true` | Enable Prometheus metrics endpoint |
+| `migration.enabled` | bool | `true` | Enable database migration hook |
 
 For a complete list of values, see [values.yaml](values.yaml).

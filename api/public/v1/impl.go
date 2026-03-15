@@ -16,17 +16,21 @@ type Server struct {
 	publickeysRepo publickeys.Repository
 }
 
-func (s Server) SearchKeys(c *gin.Context, params public.SearchKeysParams) {
-	SearchKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, params)
-}
-
 //nolint:revive // method name from generated interface
-func (s Server) GetSSHKeyById(c *gin.Context, id openapi_types.UUID) {
+func (s Server) GetPublicKeyById(c *gin.Context, id openapi_types.UUID) {
 	GetKey(c, s.logger, s.publickeysRepo, id)
 }
 
 func (s Server) GetStats(c *gin.Context) {
-	Stats(c, s.logger, s.publickeysRepo)
+	Stats(c, s.logger, s.sourcesRepo)
+}
+
+func (s Server) SearchSSHKeys(c *gin.Context, params public.SearchSSHKeysParams) {
+	SearchSSHKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, params)
+}
+
+func (s Server) SearchGPGKeys(c *gin.Context, params public.SearchGPGKeysParams) {
+	SearchGPGKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, params)
 }
 
 func NewServer(logger *zap.Logger, sourcesRepo sources.Repository, publickeysRepo publickeys.Repository) *Server {

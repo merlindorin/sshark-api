@@ -23,7 +23,7 @@ go test ./...
 # Run single test
 go test -run TestName ./path/to/package
 
-# Run server locally (requires Redis with RediSearch)
+# Run server locally (requires PostgreSQL)
 go run ./cmd serve
 ```
 
@@ -33,29 +33,26 @@ Clean architecture with three layers:
 
 - **Domain** (`internal/domain/`) - Business entities, interfaces (ports), and errors
   - `github/` - GitHub user entity, username validation
-  - `sshkeys/` - SSH key entity and repository interface
-  - `ingester/` - Service orchestrating GitHub fetch → SSH key storage
+  - `publickeys/` - Public key entity and repository interface
   - `stats/` - Statistics entity and repository interface
-  - `query/` - Query explainer interface for RediSearch validation
+  - `query/` - Query parser for search syntax
 
 - **Infrastructure** (`internal/infra/`) - Repository implementations and external clients
-  - `sshkeys/redis/` - Redis repository for SSH keys with RediSearch indexing
-  - `github/redis/` - Redis repository for GitHub user cache
-  - `github/` - HTTP fetcher for GitHub's public keys endpoint
+  - `publickeys/postgres/` - PostgreSQL repository for public keys
+  - `query/postgres/` - PostgreSQL query builder for search
+  - `fetchers/github/` - HTTP fetcher for GitHub's public keys endpoint
+  - `fetchers/gitlab/` - HTTP fetcher for GitLab's public keys endpoint
 
-- **API** (`internal/api/`) - Gin HTTP handlers
-  - `search/` - Full-text search endpoint
-  - `sshkeys/` - CRUD operations for SSH keys
-  - `validate/` - Query validation via FT.EXPLAIN
-  - `stats/` - Aggregated statistics endpoint
-  - `probe/` - Health check endpoints (liveness/readiness)
+- **API** (`api/`) - OpenAPI-generated HTTP handlers
+  - `public/` - Public API endpoints (search, stats)
+  - `common/` - Shared schemas
 
 ## Key Patterns
 
-- Repositories use RESP3 protocol with Redis Stack (RediSearch + RedisJSON)
-- Search uses `FT.SEARCH` with custom RESP3 result parsing (`internal/infra/utils.go`)
-- Statistics use `FT.AGGREGATE` with GROUPBY for counts
-- Repository methods hydrate result objects passed by reference (e.g., `GetStats(ctx, *Stats) error`)
+- PostgreSQL for persistent storage with migrations (`db/migrations/`)
+- Search uses custom query parser (`internal/domain/query/`) that generates SQL WHERE clauses
+- Repository pattern with context-aware methods
+- OpenAPI code generation with oapi-codegen
 
 ## Commit Convention
 

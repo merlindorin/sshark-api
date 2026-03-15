@@ -1,0 +1,64 @@
+{{- if .Values.cnpg.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "sshark-api.fullname" . }}-pg
+  labels:
+    {{- include "sshark-api.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.cnpg.instances }}
+
+  {{- if .Values.cnpg.imageName }}
+  imageName: {{ .Values.cnpg.imageName }}
+  {{- end }}
+
+  postgresql:
+    parameters:
+      {{- toYaml .Values.cnpg.parameters | nindent 6 }}
+
+  bootstrap:
+    initdb:
+      database: {{ .Values.cnpg.database }}
+      owner: {{ .Values.cnpg.owner }}
+      {{- if .Values.cnpg.postInitSQL }}
+      postInitSQL:
+        {{- toYaml .Values.cnpg.postInitSQL | nindent 8 }}
+      {{- end }}
+
+  storage:
+    size: {{ .Values.cnpg.storage.size }}
+    {{- if .Values.cnpg.storage.storageClass }}
+    storageClass: {{ .Values.cnpg.storage.storageClass }}
+    {{- end }}
+
+  {{- if .Values.cnpg.resources }}
+  resources:
+    {{- toYaml .Values.cnpg.resources | nindent 4 }}
+  {{- end }}
+
+  {{- if .Values.cnpg.backup.enabled }}
+  backup:
+    barmanObjectStore:
+      destinationPath: {{ .Values.cnpg.backup.destinationPath }}
+      {{- if .Values.cnpg.backup.endpointURL }}
+      endpointURL: {{ .Values.cnpg.backup.endpointURL }}
+      {{- end }}
+      {{- if .Values.cnpg.backup.s3Credentials }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ .Values.cnpg.backup.s3Credentials.secretName }}
+          key: {{ .Values.cnpg.backup.s3Credentials.accessKeyIdKey }}
+        secretAccessKey:
+          name: {{ .Values.cnpg.backup.s3Credentials.secretName }}
+          key: {{ .Values.cnpg.backup.s3Credentials.secretAccessKeyKey }}
+      {{- end }}
+      wal:
+        compression: {{ .Values.cnpg.backup.wal.compression | default "gzip" }}
+    retentionPolicy: {{ .Values.cnpg.backup.retentionPolicy | default "30d" }}
+  {{- end }}
+
+  {{- if .Values.cnpg.monitoring.enabled }}
+  monitoring:
+    enablePodMonitor: {{ .Values.cnpg.monitoring.enablePodMonitor }}
+  {{- end }}
+{{- end }}

@@ -33,8 +33,12 @@ type Fetcher struct {
 	rateRemaining  int
 }
 
-// WithToken sets the GitHub API token.
+// WithToken sets the GitHub API token. If token is empty, no authorization header is added,
+// allowing anonymous API access with lower rate limits.
 func WithToken(token string) do.Option {
+	if token == "" {
+		return func(*do.Params) {} // no-op
+	}
 	return do.WithExtraHeader("Authorization", fmt.Sprintf("Bearer %s", token))
 }
 

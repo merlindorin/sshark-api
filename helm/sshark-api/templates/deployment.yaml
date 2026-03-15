@@ -53,6 +53,35 @@ spec:
           env:
             - name: PORT
               value: {{ .Values.service.targetPort | quote }}
+            {{- if .Values.cnpg.enabled }}
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: host
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: port
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: password
+            - name: POSTGRES_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: dbname
+            - name: POSTGRES_SSL_MODE
+              value: "require"
+            {{- else }}
             - name: POSTGRES_HOST
               value: {{ .Values.postgres.host | quote }}
             - name: POSTGRES_PORT
@@ -63,10 +92,6 @@ spec:
               value: {{ .Values.postgres.database | quote }}
             - name: POSTGRES_SSL_MODE
               value: {{ .Values.postgres.sslMode | quote }}
-            - name: POSTGRES_MAX_CONNS
-              value: {{ .Values.postgres.maxConns | quote }}
-            - name: POSTGRES_MIN_CONNS
-              value: {{ .Values.postgres.minConns | quote }}
             {{- if .Values.postgres.existingSecret }}
             - name: POSTGRES_PASSWORD
               valueFrom:
@@ -77,6 +102,12 @@ spec:
             - name: POSTGRES_PASSWORD
               value: {{ .Values.postgres.password | quote }}
             {{- end }}
+            {{- end }}
+            - name: POSTGRES_MAX_CONNS
+              value: {{ .Values.postgres.maxConns | quote }}
+            - name: POSTGRES_MIN_CONNS
+              value: {{ .Values.postgres.minConns | quote }}
+            {{- if or .Values.clerk.token .Values.clerk.existingSecret }}
             - name: CLERK_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -87,6 +118,7 @@ spec:
                   name: {{ include "sshark-api.fullname" . }}-clerk-token
                   key: clerk-token
                   {{- end }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}

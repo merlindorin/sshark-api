@@ -1,220 +1,134 @@
 # Multi-Provider Scrapers
 
-The sshark-api Helm chart supports deploying multiple scrapers, one for each provider (GitHub, GitLab).
+The sshark-api Helm chart supports deploying scrapers for multiple providers (GitHub, GitLab).
 
 ## Configuration
 
-Each provider can be independently enabled and configured under the `scrapers` section in `values.yaml`:
+Configure the scraper in `values.yaml`:
 
 ```yaml
-scrapers:
-  github:
-    enabled: true
-    rateLimit: 2.0
-    batchSize: 100
-    resources:
-      limits:
-        cpu: 100m
-        memory: 128Mi
-      requests:
-        cpu: 50m
-        memory: 64Mi
-
-  gitlab:
-    enabled: false
-    rateLimit: 1.0
-    batchSize: 100
-    token: ""
-    existingSecret: ""
-    existingSecretKey: "gitlab-token"
-    resources:
-      limits:
-        cpu: 100m
-        memory: 128Mi
-      requests:
-        cpu: 50m
-        memory: 64Mi
+scraper:
+  enabled: true
+  provider: "github"    # or "gitlab"
+  batchSize: 100
+  delay: "1s"
+  githubToken: ""
+  gitlabToken: ""
+  existingSecret: ""
+  existingSecretGithubKey: "github-token"
+  existingSecretGitlabKey: "gitlab-token"
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 ```
 
-## Deployment Strategy
+## Token Configuration
 
-Each enabled scraper will deploy as a separate Deployment:
-- `<release>-scraper-github` for GitHub scraping
-- `<release>-scraper-gitlab` for GitLab scraping
+### GitHub Token (Optional)
 
-This allows:
-- Independent scaling per provider
-- Different resource limits per provider
-- Different rate limits per provider
-- Independent node placement via nodeSelector/affinity
-
-## GitLab Token Configuration
-
-GitLab scraping requires an API token with `read_api` scope.
-
-### Option 1: Direct Token (Development)
-
-Set the token directly in values.yaml:
+GitHub scraping works without authentication but with lower rate limits. For production use:
 
 ```yaml
-scrapers:
-  gitlab:
-    enabled: true
-    token: "glpat-xxxxxxxxxxxxxxxxxxxx"
+scraper:
+  enabled: true
+  provider: "github"
+  githubToken: "ghp_xxxxxxxxxxxxxxxxxxxx"
 ```
 
-The chart will automatically create a secret named `<release>-gitlab-token`.
-
-**⚠️ Warning:** Do not commit tokens to version control!
-
-### Option 2: Existing Secret (Production)
-
-Create a secret manually:
+Or use an existing secret (recommended):
 
 ```bash
-kubectl create secret generic gitlab-token \
+kubectl create secret generic scraper-tokens \
+  --from-literal=github-token=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+```yaml
+scraper:
+  enabled: true
+  provider: "github"
+  existingSecret: "scraper-tokens"
+  existingSecretGithubKey: "github-token"
+```
+
+### GitLab Token (Required)
+
+GitLab scraping requires an API token with `read_api` scope:
+
+```yaml
+scraper:
+  enabled: true
+  provider: "gitlab"
+  gitlabToken: "glpat-xxxxxxxxxxxxxxxxxxxx"
+```
+
+Or use an existing secret:
+
+```bash
+kubectl create secret generic scraper-tokens \
   --from-literal=gitlab-token=glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
-Then reference it in values.yaml:
-
 ```yaml
-scrapers:
-  gitlab:
-    enabled: true
-    existingSecret: "gitlab-token"
-    existingSecretKey: "gitlab-token"
-```
-
-### Option 3: External Secret Operator
-
-Use external-secrets operator to sync from a secret manager:
-
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: gitlab-token
-spec:
-  secretStoreRef:
-    name: vault
-    kind: SecretStore
-  target:
-    name: gitlab-token
-  data:
-    - secretKey: gitlab-token
-      remoteRef:
-        key: sshark-api/gitlab-token
-```
-
-Then reference it:
-
-```yaml
-scrapers:
-  gitlab:
-    enabled: true
-    existingSecret: "gitlab-token"
+scraper:
+  enabled: true
+  provider: "gitlab"
+  existingSecret: "scraper-tokens"
+  existingSecretGitlabKey: "gitlab-token"
 ```
 
 ## Examples
 
-### Enable Both Scrapers
+### GitHub Scraper
 
 ```yaml
-scrapers:
-  github:
-    enabled: true
-    rateLimit: 2.0
-    batchSize: 100
-
-  gitlab:
-    enabled: true
-    rateLimit: 1.0
-    batchSize: 100
-    existingSecret: "gitlab-token"
+scraper:
+  enabled: true
+  provider: "github"
+  batchSize: 100
+  delay: "1s"
 ```
 
-### GitLab Only
+### GitLab Scraper
 
 ```yaml
-scrapers:
-  github:
-    enabled: false
-
-  gitlab:
-    enabled: true
-    rateLimit: 1.0
-    batchSize: 200
-    existingSecret: "gitlab-token"
-    resources:
-      limits:
-        cpu: 200m
-        memory: 256Mi
-```
-
-### Different Node Placement
-
-```yaml
-scrapers:
-  github:
-    enabled: true
-    nodeSelector:
-      scraper: github
-    tolerations:
-      - key: "scraper"
-        operator: "Equal"
-        value: "github"
-        effect: "NoSchedule"
-
-  gitlab:
-    enabled: true
-    existingSecret: "gitlab-token"
-    nodeSelector:
-      scraper: gitlab
-    tolerations:
-      - key: "scraper"
-        operator: "Equal"
-        value: "gitlab"
-        effect: "NoSchedule"
+scraper:
+  enabled: true
+  provider: "gitlab"
+  batchSize: 100
+  delay: "2s"
+  existingSecret: "gitlab-token"
 ```
 
 ## Monitoring
 
-Each scraper deployment has labels for identification:
-- `app.kubernetes.io/component: scraper`
-- `app.kubernetes.io/provider: <provider>`
-
-Use these labels for monitoring:
+The scraper deployment has labels for identification:
 
 ```bash
-# View GitHub scraper logs
-kubectl logs -l app.kubernetes.io/provider=github -f
+# View scraper logs
+kubectl logs -l app.kubernetes.io/component=scraper -f
 
-# View GitLab scraper logs
-kubectl logs -l app.kubernetes.io/provider=gitlab -f
-
-# List all scrapers
+# Get scraper deployment
 kubectl get deployments -l app.kubernetes.io/component=scraper
 ```
 
 ## Rate Limits
 
-Default rate limits are conservative to avoid hitting API limits:
+Default configurations are conservative to avoid hitting API limits:
 
-| Provider | Default Rate | API Limit | Recommended |
-|----------|-------------|-----------|-------------|
-| GitHub   | 2.0 req/s   | 60 req/h (unauth) | 2.0 req/s |
-| GitLab   | 1.0 req/s   | 120 req/min (auth) | 1.0 req/s |
+| Provider | Default Delay | API Limit | Notes |
+|----------|--------------|-----------|-------|
+| GitHub   | 1s           | 60 req/h (unauth), 5000/h (auth) | Token recommended |
+| GitLab   | 1s           | 120 req/min (auth) | Token required |
 
-Adjust based on your quota and needs:
+Adjust based on your quota:
 
 ```yaml
-scrapers:
-  github:
-    rateLimit: 1.0  # Slower, more conservative
-
-  gitlab:
-    rateLimit: 1.0  # At GitLab's 120/min limit
+scraper:
+  delay: "500ms"  # Faster, but watch rate limits
 ```
 
 ## Troubleshooting
@@ -224,8 +138,8 @@ scrapers:
 Check if the secret exists and contains the token:
 
 ```bash
-kubectl get secret <release>-gitlab-token
-kubectl get secret <release>-gitlab-token -o jsonpath='{.data.gitlab-token}' | base64 -d
+kubectl get secret scraper-tokens
+kubectl get secret scraper-tokens -o jsonpath='{.data.gitlab-token}' | base64 -d
 ```
 
 ### Token Validation Error
@@ -240,26 +154,9 @@ Should return user information. If 401, the token is invalid.
 
 ### Rate Limit Errors
 
-If seeing "429 Too Many Requests" errors, reduce the rate limit:
+If seeing "429 Too Many Requests" errors, increase the delay:
 
 ```yaml
-scrapers:
-  gitlab:
-    rateLimit: 2.0  # Reduce from 5.0
-```
-
-### Progress Tracking
-
-Each provider has independent progress tracking in Redis:
-- GitHub: `sshark:scraper:last_user_id`
-- GitLab: `sshark:scraper:gitlab:last_page`
-
-To reset progress:
-
-```bash
-# Reset GitHub progress
-kubectl exec -it <redis-pod> -- redis-cli DEL sshark:scraper:last_user_id
-
-# Reset GitLab progress
-kubectl exec -it <redis-pod> -- redis-cli DEL sshark:scraper:gitlab:last_page
+scraper:
+  delay: "2s"
 ```

@@ -171,6 +171,67 @@ func (r *Repository) scanPublicKeys(ctx context.Context, rows pgx.Rows) ([]publi
 	return entities, nil
 }
 
+func (r *Repository) SearchWithQuery(
+	ctx context.Context,
+	keyType publickeys.KeyType,
+	whereClause string,
+	args []any,
+	limit, offset int,
+) (*publickeys.SearchResult, error) {
+	baseFrom, baseWhere := r.buildSearchBase(keyType)
+
+	fullWhere := baseWhere
+	if whereClause != "" {
+		fullWhere += " AND " + whereClause
+	}
+
+	countQuery := "SELECT COUNT(*) FROM " + baseFrom + fullWhere
+	var total int
+	err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+
+	argIndex := len(args) + 1
+	selectQuery := `
+		SELECT pk.id, pk.source_id, pk.key_type, pk.key_data, pk.fingerprint,
+		       pk.created_at, pk.updated_at
+		FROM ` + baseFrom + fullWhere
+	selectQuery += ` ORDER BY pk.created_at DESC LIMIT $` + strconv.Itoa(argIndex)
+	selectQuery += ` OFFSET $` + strconv.Itoa(argIndex+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.pool.Query(ctx, selectQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entities, err := r.scanPublicKeys(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return &publickeys.SearchResult{Entities: entities, Total: total}, nil
+}
+
+func (r *Repository) buildSearchBase(keyType publickeys.KeyType) (string, string) {
+	switch keyType {
+	case publickeys.KeyTypeSSH:
+		return `public_keys pk
+			JOIN sources s ON pk.source_id = s.id
+			JOIN ssh_key_metadata sm ON pk.id = sm.key_id`,
+			" WHERE pk.key_type = 'ssh'"
+	case publickeys.KeyTypeGPG:
+		return `public_keys pk
+			JOIN sources s ON pk.source_id = s.id
+			JOIN gpg_key_metadata gm ON pk.id = gm.key_id`,
+			" WHERE pk.key_type = 'gpg'"
+	default:
+		return "public_keys pk JOIN sources s ON pk.source_id = s.id", " WHERE 1=1"
+	}
+}
+
 func (r *Repository) Create(ctx context.Context, entity *publickeys.Entity) error {
 	if entity.ID == uuid.Nil {
 		entity.ID = uuid.New()

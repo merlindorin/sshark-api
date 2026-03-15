@@ -41,15 +41,25 @@ func (srv *HTTPServer) Start(ctx context.Context, l *zap.Logger, router http.Han
 	return func() error {
 		server := srv.Server(router)
 
-		l.Info("HTTP server listening", zap.String("address", srv.Addr()))
-		if listenErr := server.ListenAndServe(); listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
-			return listenErr
+		errCh := make(chan error, 1)
+		go func() {
+			l.Info("HTTP server listening", zap.String("address", srv.Addr()))
+			if listenErr := server.ListenAndServe(); listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+				errCh <- listenErr
+			}
+			close(errCh)
+		}()
+
+		select {
+		case err := <-errCh:
+			return err
+		case <-ctx.Done():
 		}
 
-		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), srv.GracefulPeriod)
 		defer cancel()
 
+		l.Info("Shutting down HTTP server...")
 		if shutdownErr := server.Shutdown(shutdownCtx); shutdownErr != nil {
 			l.Error("failed to shutdown HTTP server", zap.Error(shutdownErr))
 			return shutdownErr

@@ -10,6 +10,9 @@ type Repository interface {
 	Get(ctx context.Context, id uuid.UUID) (*Entity, error)
 	GetByFingerprint(ctx context.Context, fingerprint string) (*Entity, error)
 	Search(ctx context.Context, filter SearchFilter, limit, offset int) (*SearchResult, error)
+	SearchWithQuery(
+		ctx context.Context, keyType KeyType, whereClause string, args []any, limit, offset int,
+	) (*SearchResult, error)
 	Create(ctx context.Context, entity *Entity) error
 	CreateBatch(ctx context.Context, entities []Entity) error
 	Update(ctx context.Context, entity *Entity) error

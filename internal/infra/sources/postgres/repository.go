@@ -181,3 +181,27 @@ func (r *Repository) Exists(ctx context.Context, provider, userID string) (bool,
 	}
 	return exists, nil
 }
+
+func (r *Repository) GetStats(ctx context.Context) (*sources.Stats, error) {
+	var stats sources.Stats
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM public_keys) AS total_keys,
+			(SELECT COUNT(*) FROM public_keys WHERE key_type = 'ssh') AS total_ssh_keys,
+			(SELECT COUNT(*) FROM public_keys WHERE key_type = 'gpg') AS total_gpg_keys,
+			(SELECT COUNT(DISTINCT username) FROM sources) AS total_usernames,
+			(SELECT COUNT(DISTINCT provider) FROM sources) AS total_providers
+	`).Scan(
+		&stats.TotalKeys,
+		&stats.TotalSSHKeys,
+		&stats.TotalGPGKeys,
+		&stats.TotalUsernames,
+		&stats.TotalProviders,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &stats, nil
+}

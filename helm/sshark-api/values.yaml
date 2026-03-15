@@ -10,6 +10,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 # PostgreSQL connection configuration
+# When cnpg.enabled is true, these values are auto-configured
 postgres:
   host: "localhost"
   port: 5432
@@ -22,6 +23,54 @@ postgres:
   # Use existing secret for PostgreSQL password (recommended for production)
   existingSecret: ""
   existingSecretPasswordKey: "postgres-password"
+
+# CloudNativePG cluster configuration
+# Creates a PostgreSQL cluster using CloudNativePG operator
+cnpg:
+  # Enable CloudNativePG cluster creation
+  enabled: false
+  # Number of PostgreSQL instances
+  instances: 1
+  # PostgreSQL image (optional, uses operator default if not set)
+  imageName: ""
+  # Database name
+  database: "sshark"
+  # Database owner
+  owner: "sshark"
+  # PostgreSQL parameters
+  parameters:
+    max_connections: "100"
+    shared_buffers: "256MB"
+  # Post-init SQL statements
+  postInitSQL: []
+  # Storage configuration
+  storage:
+    size: "1Gi"
+    storageClass: ""
+  # Resource limits
+  resources: {}
+  #   requests:
+  #     memory: "512Mi"
+  #     cpu: "100m"
+  #   limits:
+  #     memory: "1Gi"
+  #     cpu: "500m"
+  # Backup configuration
+  backup:
+    enabled: false
+    destinationPath: ""
+    endpointURL: ""
+    s3Credentials:
+      secretName: ""
+      accessKeyIdKey: "ACCESS_KEY_ID"
+      secretAccessKeyKey: "SECRET_ACCESS_KEY"
+    wal:
+      compression: "gzip"
+    retentionPolicy: "30d"
+  # Monitoring configuration
+  monitoring:
+    enabled: false
+    enablePodMonitor: true
 
 # Migration configuration
 migration:
@@ -128,8 +177,8 @@ scraper:
   provider: "github"
   # Number of users to fetch per batch
   batchSize: 100
-  # Delay between batches in milliseconds
-  delay: 1000
+  # Delay between batches (Go duration format: 1s, 500ms, etc.)
+  delay: "1s"
   # GitHub API token (use existingSecret in production)
   githubToken: ""
   # GitLab API token (use existingSecret in production)

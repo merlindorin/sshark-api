@@ -37,10 +37,39 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - scrape
-            - --provider={{ .Values.scraper.provider }}
+            - {{ .Values.scraper.provider }}
             - --batch-size={{ .Values.scraper.batchSize }}
             - --delay={{ .Values.scraper.delay }}
           env:
+            {{- if .Values.cnpg.enabled }}
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: host
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: port
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: password
+            - name: POSTGRES_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sshark-api.fullname" . }}-pg-app
+                  key: dbname
+            - name: POSTGRES_SSL_MODE
+              value: "require"
+            {{- else }}
             - name: POSTGRES_HOST
               value: {{ .Values.postgres.host | quote }}
             - name: POSTGRES_PORT
@@ -60,6 +89,7 @@ spec:
             {{- else if .Values.postgres.password }}
             - name: POSTGRES_PASSWORD
               value: {{ .Values.postgres.password | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.scraper.existingSecret }}
             - name: GITHUB_TOKEN

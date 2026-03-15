@@ -14,106 +14,6 @@ servers:
 security: []
 
 paths:
-  /search:
-    get:
-      tags:
-        - Search
-      summary: Search public keys
-      description: |
-        Search public keys (SSH and GPG) by query using RediSearch syntax.
-        In basic mode, plain text queries are automatically converted to search specified fields.
-        In advanced mode, the query must be compatible with Redis query format and supports field-specific queries like `@username:{user1}` or `@type:{ssh-ed25519}`.
-        Use the key_type parameter to filter by key type (ssh or gpg).
-      operationId: searchKeys
-      parameters:
-        - name: query
-          in: query
-          required: true
-          description: |
-            Search query.
-            In basic mode: plain text search (e.g., `merlindorin`)
-            In advanced mode: Redis-compatible query syntax (e.g., `@username:{merlindorin}`, `@type:{ssh-ed25519}`, `@provider:{github}`)
-          schema:
-            type: string
-          example: merlindorin
-        - name: fields
-          in: query
-          required: false
-          description: |
-            List of fields to search in (used in basic mode).
-            Available fields: key, username, provider, type
-            Default: all fields
-          style: form
-          explode: false
-          schema:
-            type: array
-            items:
-              type: string
-              enum:
-                - key
-                - username
-                - provider
-                - type
-            default: [key, username, provider, type]
-          example: [username, provider]
-        - name: advanced
-          in: query
-          required: false
-          description: Enable advanced mode for Redis-compatible query syntax
-          schema:
-            type: boolean
-            default: false
-        - name: limit
-          in: query
-          required: false
-          description: Maximum number of results to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 10
-        - name: offset
-          in: query
-          required: false
-          description: Number of results to skip for pagination
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-        - name: key_type
-          in: query
-          required: false
-          description: Filter by key type (ssh or gpg). If not specified, returns both types.
-          schema:
-            $ref: '../common/openapi.yaml#/components/schemas/KeyType'
-      responses:
-        '200':
-          description: Search results
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SearchResponse'
-        '400':
-          description: Invalid query or parameters
-          content:
-            application/json:
-              schema:
-                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
-              examples:
-                invalidQuery:
-                  summary: Invalid search query
-                  value:
-                    status: Bad Request
-                    status_code: 400
-                    error:
-                      code: INVALID_SEARCH_QUERY
-                      message: Not a valid search query
-                      details: "The search query `@invalid` is not valid"
-                      timestamp: "2024-01-17T00:00:00Z"
-                      path: "/api/v1/search?query=@invalid&advanced=true"
-                      suggestion: "You can use: merlindorin (basic mode), or @username:{merlindorin}, @type:{ssh-ed25519} (advanced mode)"
-                    request_id: "550e8400-e29b-41d4-a716-446655440000"
-                    documentation_url: "https://sshark.app/doc"
   /publickeys/{id}:
     get:
       tags:
@@ -176,9 +76,203 @@ paths:
               schema:
                 $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
 
+  /ssh/search:
+    get:
+      tags:
+        - SSH Keys
+      summary: Search SSH keys
+      description: |
+        Search SSH keys using either basic mode or advanced query syntax.
+
+        **Basic mode** (using `query` and `fields`):
+        - `?query=torvalds` - searches all default fields
+        - `?query=torvalds&fields=source.username,source.provider` - searches only specified fields
+        - Multiple fields are combined with OR
+
+        **Advanced mode** (using `q`):
+        - `@source.username:{torvalds}` - exact match
+        - `@source.username:{linus*}` - prefix wildcard
+        - `@source.username:{*bar*}` - contains wildcard
+        - `@source.username:{foo} | @source.provider:{bar}` - OR
+        - `@source.username:{foo} & @source.provider:{bar}` - AND
+        - `@source.username:{foo} & (@source.provider:{github} | @source.provider:{gitlab})` - grouped
+
+        Supported fields: id, fingerprint, algorithm, comment, key_bits, source.username, source.provider, source.user_id, source.uri
+      operationId: searchSSHKeys
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Advanced search query
+          schema:
+            type: string
+          example: "@source.username:{torvalds}"
+        - name: query
+          in: query
+          required: false
+          description: Basic search term (searches across specified fields with OR)
+          schema:
+            type: string
+          example: "torvalds"
+        - name: fields
+          in: query
+          required: false
+          description: |
+            Fields to search in basic mode (comma-separated or repeated).
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - id
+                - fingerprint
+                - algorithm
+                - comment
+                - key_bits
+                - source.username
+                - source.provider
+                - source.user_id
+                - source.uri
+            default: [source.username, source.provider]
+          example: [source.username, source.provider]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          required: false
+          description: Number of results to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSHSearchResponse'
+        '400':
+          description: Invalid query syntax
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /gpg/search:
+    get:
+      tags:
+        - GPG Keys
+      summary: Search GPG keys
+      description: |
+        Search GPG keys using either basic mode or advanced query syntax.
+
+        **Basic mode** (using `query` and `fields`):
+        - `?query=torvalds` - searches all default fields
+        - `?query=torvalds&fields=source.username,source.provider` - searches only specified fields
+        - Multiple fields are combined with OR
+
+        **Advanced mode** (using `q`):
+        - `@source.username:{torvalds}` - exact match
+        - `@user_ids:{*@kernel.org}` - wildcard search in user IDs array
+        - `@source.username:{foo} & @algorithm:{RSA}` - combined search
+
+        Supported fields: id, fingerprint, algorithm, key_bits, user_ids, capabilities, source.username, source.provider, source.user_id, source.uri
+      operationId: searchGPGKeys
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Advanced search query
+          schema:
+            type: string
+          example: "@source.username:{torvalds}"
+        - name: query
+          in: query
+          required: false
+          description: Basic search term (searches across specified fields with OR)
+          schema:
+            type: string
+          example: "torvalds"
+        - name: fields
+          in: query
+          required: false
+          description: |
+            Fields to search in basic mode (comma-separated or repeated).
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - id
+                - fingerprint
+                - algorithm
+                - key_bits
+                - user_ids
+                - capabilities
+                - source.username
+                - source.provider
+                - source.user_id
+                - source.uri
+            default: [source.username, source.provider]
+          example: [source.username, source.provider]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          required: false
+          description: Number of results to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GPGSearchResponse'
+        '400':
+          description: Invalid query syntax
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
 components:
   schemas:
-    SearchResponse:
+    SSHSearchResponse:
       type: object
       required:
         - entities
@@ -191,8 +285,8 @@ components:
         entities:
           type: array
           items:
-            $ref: '../common/openapi.yaml#/components/schemas/PublicKey'
-          description: List of public keys matching the search query
+            $ref: '../common/openapi.yaml#/components/schemas/SSHPublicKey'
+          description: List of SSH keys matching the search query
         total:
           type: integer
           description: Total number of results matching the query
@@ -212,19 +306,65 @@ components:
         query:
           type: string
           description: The search query that was executed
-          example: "@username:{merlindorin}"
+          example: "@user:{torvalds}"
+
+    GPGSearchResponse:
+      type: object
+      required:
+        - entities
+        - total
+        - limit
+        - offset
+        - duration
+        - query
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: '../common/openapi.yaml#/components/schemas/GPGPublicKey'
+          description: List of GPG keys matching the search query
+        total:
+          type: integer
+          description: Total number of results matching the query
+          example: 100
+        limit:
+          type: integer
+          description: Maximum number of results returned
+          example: 10
+        offset:
+          type: integer
+          description: Number of results skipped
+          example: 0
+        duration:
+          type: integer
+          description: Query execution duration in nanoseconds
+          example: 2154323
+        query:
+          type: string
+          description: The search query that was executed
+          example: "@user:{torvalds}"
 
     Statistics:
       type: object
       required:
         - total_keys
+        - total_ssh_keys
+        - total_gpg_keys
         - total_usernames
         - total_providers
       properties:
         total_keys:
           type: integer
-          description: Total number of SSH keys indexed
+          description: Total number of public keys indexed
           example: 1000
+        total_ssh_keys:
+          type: integer
+          description: Total number of SSH keys indexed
+          example: 800
+        total_gpg_keys:
+          type: integer
+          description: Total number of GPG keys indexed
+          example: 200
         total_usernames:
           type: integer
           description: Total number of unique usernames
@@ -232,11 +372,13 @@ components:
         total_providers:
           type: integer
           description: Total number of providers
-          example: 1
+          example: 2
 
 tags:
-  - name: Search
-    description: Search public keys (SSH and GPG)
+  - name: SSH Keys
+    description: SSH key search operations
+  - name: GPG Keys
+    description: GPG key search operations
   - name: Public Keys
     description: Public key operations
   - name: Statistics

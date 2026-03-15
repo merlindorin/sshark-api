@@ -109,6 +109,106 @@ components:
           description: Key capabilities (sign, certify, encrypt_comms, encrypt_storage, authenticate)
           example: ["sign", "certify"]
 
+    SSHPublicKey:
+      type: object
+      description: SSH public key with embedded metadata
+      required:
+        - id
+        - fingerprint
+        - key_data
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the public key
+        fingerprint:
+          type: string
+          description: Key fingerprint
+          example: "SHA256:abcdef1234567890"
+        key_data:
+          type: string
+          description: Raw key data (base64 encoded)
+        algorithm:
+          type: string
+          description: SSH key algorithm
+          example: ssh-ed25519
+        comment:
+          type: string
+          description: Comment from the SSH key
+          example: user@hostname
+        key_bits:
+          type: integer
+          description: Key size in bits
+          example: 256
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        source:
+          $ref: '#/components/schemas/Source'
+
+    GPGPublicKey:
+      type: object
+      description: GPG public key with embedded metadata
+      required:
+        - id
+        - fingerprint
+        - key_data
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the public key
+        fingerprint:
+          type: string
+          description: Key fingerprint
+          example: "SHA256:abcdef1234567890"
+        key_data:
+          type: string
+          description: Raw key data (base64 encoded)
+        algorithm:
+          type: string
+          description: GPG key algorithm
+          example: RSA
+        key_bits:
+          type: integer
+          description: Key size in bits
+          example: 4096
+        expires_at:
+          type: string
+          format: date-time
+          description: Key expiration date
+        user_ids:
+          type: array
+          items:
+            type: string
+          description: GPG user IDs (usually email addresses)
+          example: ["user@example.com"]
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Key capabilities
+          example: ["sign", "certify"]
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        source:
+          $ref: '#/components/schemas/Source'
+
     Source:
       type: object
       description: Key source information
