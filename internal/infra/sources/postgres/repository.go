@@ -225,8 +225,9 @@ func (r *Repository) GetStats(ctx context.Context) (*sources.Stats, error) {
 	stats.Facets["key_type"] = []sources.Facet{keyTypeFacet}
 
 	usernameFacet, err := r.getValueFacet(ctx, `
-		SELECT 'total'::text, COUNT(DISTINCT username)
-		FROM sources
+		SELECT 'total'::text, COUNT(DISTINCT s.username)
+		FROM public_keys pk
+		JOIN sources s ON pk.source_id = s.id
 	`)
 	if err != nil {
 		return nil, err
