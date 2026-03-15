@@ -191,6 +191,7 @@ func (r *Repository) GetStats(ctx context.Context) (*sources.Stats, error) {
 		SELECT s.provider, COUNT(pk.id)
 		FROM public_keys pk
 		JOIN sources s ON pk.source_id = s.id
+		WHERE pk.key_type = 'ssh'
 		GROUP BY s.provider
 		ORDER BY COUNT(pk.id) DESC
 	`)
@@ -200,11 +201,8 @@ func (r *Repository) GetStats(ctx context.Context) (*sources.Stats, error) {
 	stats.Facets["source.provider"] = []sources.Facet{providerFacet}
 
 	algorithmFacet, err := r.getValueFacet(ctx, `
-		SELECT algorithm, COUNT(*) FROM (
-			SELECT algorithm FROM ssh_key_metadata
-			UNION ALL
-			SELECT algorithm FROM gpg_key_metadata
-		) AS algorithms
+		SELECT algorithm, COUNT(*)
+		FROM ssh_key_metadata
 		GROUP BY algorithm
 		ORDER BY COUNT(*) DESC
 	`)
@@ -213,21 +211,11 @@ func (r *Repository) GetStats(ctx context.Context) (*sources.Stats, error) {
 	}
 	stats.Facets["algorithm"] = []sources.Facet{algorithmFacet}
 
-	keyTypeFacet, err := r.getValueFacet(ctx, `
-		SELECT key_type::text, COUNT(*)
-		FROM public_keys
-		GROUP BY key_type
-		ORDER BY COUNT(*) DESC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	stats.Facets["key_type"] = []sources.Facet{keyTypeFacet}
-
 	usernameFacet, err := r.getValueFacet(ctx, `
 		SELECT 'total'::text, COUNT(DISTINCT s.username)
 		FROM public_keys pk
 		JOIN sources s ON pk.source_id = s.id
+		WHERE pk.key_type = 'ssh'
 	`)
 	if err != nil {
 		return nil, err
