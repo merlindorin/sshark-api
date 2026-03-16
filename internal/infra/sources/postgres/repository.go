@@ -211,17 +211,19 @@ func (r *Repository) GetStats(ctx context.Context) (*sources.Stats, error) {
 	}
 	stats.Facets["algorithm"] = []sources.Facet{algorithmFacet}
 
-	usernameFacet, err := r.getValueFacet(ctx, `
-		SELECT 'total'::text, COUNT(*)::int
-		FROM (
-			SELECT DISTINCT s.username
-			FROM public_keys pk
-			JOIN sources s ON pk.source_id = s.id
-			WHERE pk.key_type = 'ssh'
-		) sub
-	`)
+	var usernameCount int64
+	err = r.pool.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT s.username)
+		FROM public_keys pk
+		JOIN sources s ON pk.source_id = s.id
+		WHERE pk.key_type = 'ssh'
+	`).Scan(&usernameCount)
 	if err != nil {
 		return nil, err
+	}
+	usernameFacet := sources.Facet{
+		Type: "value",
+		Data: []sources.FacetValue{{Value: "total", Count: int(usernameCount)}},
 	}
 	stats.Facets["source.username"] = []sources.Facet{usernameFacet}
 
@@ -241,11 +243,11 @@ func (r *Repository) getValueFacet(ctx context.Context, query string) (sources.F
 	}
 	for rows.Next() {
 		var value string
-		var count int
+		var count int64
 		if scanErr := rows.Scan(&value, &count); scanErr != nil {
 			return sources.Facet{}, scanErr
 		}
-		facet.Data = append(facet.Data, sources.FacetValue{Value: value, Count: count})
+		facet.Data = append(facet.Data, sources.FacetValue{Value: value, Count: int(count)})
 	}
 	return facet, rows.Err()
 }
