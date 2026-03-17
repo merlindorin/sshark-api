@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -11,18 +12,29 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/sources"
 )
 
+//nolint:gochecknoglobals // in-memory cache for stats
+var (
+	cache      *sources.Stats
+	updateTime time.Time
+)
+
 func Stats(c *gin.Context, logger *zap.Logger, repo sources.Repository) {
 	ctx := c.Request.Context()
 
-	stats, err := repo.GetStats(ctx)
-	if err != nil {
-		logger.Error("failed to get stats", zap.Error(err))
-		_ = c.Error(common.InternalError(c))
-		return
+	if time.Now().After(updateTime.Add(5*time.Minute)) || cache == nil {
+		stats, err := repo.GetStats(ctx)
+		if err != nil {
+			logger.Error("failed to get stats", zap.Error(err))
+			_ = c.Error(common.InternalError(c))
+			return
+		}
+
+		cache = stats
+		updateTime = time.Now()
 	}
 
 	facets := make(map[string][]public.Facet)
-	for field, domainFacets := range stats.Facets {
+	for field, domainFacets := range cache.Facets {
 		apiFacets := make([]public.Facet, len(domainFacets))
 		for i, f := range domainFacets {
 			data := make([]public.FacetValue, len(f.Data))
