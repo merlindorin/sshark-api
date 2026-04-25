@@ -173,12 +173,14 @@ affinity: {}
 scraper:
   # Enable scraper deployment
   enabled: false
+  # Number of replicas (set to 0 to pause scraping without deleting the deployment)
+  replicas: 1
   # Provider to scrape (github, gitlab)
   provider: "github"
   # Number of users to fetch per batch
   batchSize: 100
   # Delay between batches (Go duration format: 1s, 500ms, etc.)
-  delay: "1s"
+  delay: "1m"
   # GitHub API token (use existingSecret in production)
   githubToken: ""
   # GitLab API token (use existingSecret in production)
