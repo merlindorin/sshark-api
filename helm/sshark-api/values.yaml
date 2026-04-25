@@ -173,8 +173,6 @@ affinity: {}
 scraper:
   # Enable scraper deployment
   enabled: false
-  # Number of replicas (set to 0 to pause scraping without deleting the deployment)
-  replicas: 1
   # Provider to scrape (github, gitlab)
   provider: "github"
   # Number of users to fetch per batch

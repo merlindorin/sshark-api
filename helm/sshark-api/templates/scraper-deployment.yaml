@@ -7,7 +7,7 @@ metadata:
     {{- include "sshark-api.labels" . | nindent 4 }}
     app.kubernetes.io/component: scraper
 spec:
-  replicas: {{ .Values.scraper.replicas }}
+  replicas: 1
   selector:
     matchLabels:
       {{- include "sshark-api.selectorLabels" . | nindent 6 }}
