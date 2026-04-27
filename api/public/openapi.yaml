@@ -55,6 +55,39 @@ paths:
             application/json:
               schema:
                 $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+  /sources:
+    get:
+      tags:
+        - Sources
+      summary: List recently indexed sources
+      description: |
+        Returns sources ordered by most recently indexed first. Used by the home page
+        to surface the latest users we discovered. Responses are cached for 5 minutes.
+      operationId: listSources
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of sources to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 12
+      responses:
+        '200':
+          description: Recent sources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceListResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
   /sources/{provider}/{username}:
     get:
       tags:
@@ -398,6 +431,51 @@ components:
           type: string
           description: The search query that was executed
           example: "@user:{torvalds}"
+
+    SourceSummary:
+      type: object
+      description: Compact source representation (no keys)
+      required:
+        - id
+        - provider
+        - user_id
+        - username
+        - uri
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          example: github
+        user_id:
+          type: string
+          example: "12345"
+        username:
+          type: string
+          example: torvalds
+        uri:
+          type: string
+          example: https://github.com/torvalds
+        created_at:
+          type: string
+          format: date-time
+
+    SourceListResponse:
+      type: object
+      required:
+        - entities
+        - total
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceSummary'
+        total:
+          type: integer
+          description: Total number of sources in the index
+          example: 4321
 
     SourceDetail:
       type: object

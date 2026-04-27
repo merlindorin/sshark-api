@@ -147,6 +147,24 @@ type SourceDetail struct {
 	Username string `json:"username"`
 }
 
+// SourceListResponse defines model for SourceListResponse.
+type SourceListResponse struct {
+	Entities []SourceSummary `json:"entities"`
+
+	// Total Total number of sources in the index
+	Total int `json:"total"`
+}
+
+// SourceSummary Compact source representation (no keys)
+type SourceSummary struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	Provider  string             `json:"provider"`
+	Uri       string             `json:"uri"`
+	UserId    string             `json:"user_id"`
+	Username  string             `json:"username"`
+}
+
 // Statistics defines model for Statistics.
 type Statistics struct {
 	Facets map[string][]Facet `json:"facets"`
@@ -172,6 +190,12 @@ type SearchGPGKeysParams struct {
 
 // SearchGPGKeysParamsFields defines parameters for SearchGPGKeys.
 type SearchGPGKeysParamsFields string
+
+// ListSourcesParams defines parameters for ListSources.
+type ListSourcesParams struct {
+	// Limit Maximum number of sources to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // GetSourceByProviderAndUsernameParamsProvider defines parameters for GetSourceByProviderAndUsername.
 type GetSourceByProviderAndUsernameParamsProvider string
@@ -205,6 +229,9 @@ type ServerInterface interface {
 	// Get public key by ID
 	// (GET /publickeys/{id})
 	GetPublicKeyById(c *gin.Context, id openapi_types.UUID)
+	// List recently indexed sources
+	// (GET /sources)
+	ListSources(c *gin.Context, params ListSourcesParams)
 	// Get source with all SSH and GPG keys
 	// (GET /sources/{provider}/{username})
 	GetSourceByProviderAndUsername(c *gin.Context, provider GetSourceByProviderAndUsernameParamsProvider, username string)
@@ -305,6 +332,32 @@ func (siw *ServerInterfaceWrapper) GetPublicKeyById(c *gin.Context) {
 	}
 
 	siw.Handler.GetPublicKeyById(c, id)
+}
+
+// ListSources operation middleware
+func (siw *ServerInterfaceWrapper) ListSources(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSourcesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSources(c, params)
 }
 
 // GetSourceByProviderAndUsername operation middleware
@@ -440,6 +493,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.GET(options.BaseURL+"/gpg/search", wrapper.SearchGPGKeys)
 	router.GET(options.BaseURL+"/publickeys/:id", wrapper.GetPublicKeyById)
+	router.GET(options.BaseURL+"/sources", wrapper.ListSources)
 	router.GET(options.BaseURL+"/sources/:provider/:username", wrapper.GetSourceByProviderAndUsername)
 	router.GET(options.BaseURL+"/ssh/search", wrapper.SearchSSHKeys)
 	router.GET(options.BaseURL+"/stats", wrapper.GetStats)

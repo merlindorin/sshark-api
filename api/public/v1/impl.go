@@ -41,6 +41,10 @@ func (s Server) GetSourceByProviderAndUsername(
 	GetSourceByProviderAndUsername(c, s.logger, s.sourcesRepo, s.publickeysRepo, provider, username)
 }
 
+func (s Server) ListSources(c *gin.Context, params public.ListSourcesParams) {
+	ListSources(c, s.logger, s.sourcesRepo, params)
+}
+
 func NewServer(logger *zap.Logger, sourcesRepo sources.Repository, publickeysRepo publickeys.Repository) *Server {
 	return &Server{
 		logger:         logger,

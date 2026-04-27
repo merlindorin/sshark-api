@@ -13,7 +13,55 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/sources"
 )
 
-const sourceCacheControl = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400"
+const (
+	sourceCacheControl     = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400"
+	sourceListCacheControl = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+	defaultSourceListLimit = 12
+	maxSourceListLimit     = 100
+)
+
+func ListSources(
+	c *gin.Context,
+	logger *zap.Logger,
+	sourcesRepo sources.Repository,
+	params public.ListSourcesParams,
+) {
+	limit := defaultSourceListLimit
+	if params.Limit != nil {
+		limit = *params.Limit
+	}
+	if limit < 1 {
+		limit = defaultSourceListLimit
+	}
+	if limit > maxSourceListLimit {
+		limit = maxSourceListLimit
+	}
+
+	result, err := sourcesRepo.List(c.Request.Context(), limit, 0)
+	if err != nil {
+		logger.Error("failed to list sources", zap.Error(err))
+		_ = c.Error(common.InternalError(c))
+		return
+	}
+
+	entities := make([]public.SourceSummary, 0, len(result.Entities))
+	for _, e := range result.Entities {
+		entities = append(entities, public.SourceSummary{
+			Id:        e.ID,
+			Provider:  e.Provider,
+			UserId:    e.UserID,
+			Username:  e.Username,
+			Uri:       e.URI,
+			CreatedAt: e.CreatedAt,
+		})
+	}
+
+	c.Header("Cache-Control", sourceListCacheControl)
+	c.JSON(http.StatusOK, public.SourceListResponse{
+		Entities: entities,
+		Total:    result.Total,
+	})
+}
 
 func isSupportedSourceProvider(p public.GetSourceByProviderAndUsernameParamsProvider) bool {
 	switch p {

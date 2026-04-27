@@ -21,12 +21,18 @@ import (
 
 type fakeSourcesRepo struct {
 	sources.Repository
-	source *sources.Entity
-	err    error
+	source     *sources.Entity
+	err        error
+	listResult *sources.ListResult
+	listErr    error
 }
 
 func (f *fakeSourcesRepo) GetByProviderAndUsername(_ context.Context, _, _ string) (*sources.Entity, error) {
 	return f.source, f.err
+}
+
+func (f *fakeSourcesRepo) List(_ context.Context, _, _ int) (*sources.ListResult, error) {
+	return f.listResult, f.listErr
 }
 
 type fakePublicKeysRepo struct {
@@ -128,5 +134,45 @@ func TestGetSourceByProviderAndUsername_InvalidProvider(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for unsupported provider, got %d (body=%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestListSources_OK(t *testing.T) {
+	now := time.Now().UTC()
+	srcRepo := &fakeSourcesRepo{listResult: &sources.ListResult{
+		Total: 2,
+		Entities: []sources.Entity{
+			{
+				ID: uuid.New(), Provider: "github", UserID: "1", Username: "alice",
+				URI: "https://github.com/alice", CreatedAt: now,
+			},
+			{
+				ID: uuid.New(), Provider: "gitlab", UserID: "2", Username: "bob",
+				URI: "https://gitlab.com/bob", CreatedAt: now,
+			},
+		},
+	}}
+
+	router := newTestRouter(srcRepo, &fakePublicKeysRepo{})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sources?limit=2", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body=%s)", w.Code, w.Body.String())
+	}
+	if cc := w.Header().Get("Cache-Control"); cc == "" {
+		t.Errorf("expected Cache-Control header, got empty")
+	}
+
+	var got public.SourceListResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON body: %v", err)
+	}
+	if got.Total != 2 || len(got.Entities) != 2 {
+		t.Errorf("expected 2/2, got total=%d entities=%d", got.Total, len(got.Entities))
+	}
+	if got.Entities[0].Username != "alice" || got.Entities[1].Username != "bob" {
+		t.Errorf("unexpected order: %+v", got.Entities)
 	}
 }
