@@ -33,6 +33,14 @@ func (s Server) SearchGPGKeys(c *gin.Context, params public.SearchGPGKeysParams)
 	SearchGPGKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, params)
 }
 
+func (s Server) GetSourceByProviderAndUsername(
+	c *gin.Context,
+	provider public.GetSourceByProviderAndUsernameParamsProvider,
+	username string,
+) {
+	GetSourceByProviderAndUsername(c, s.logger, s.sourcesRepo, s.publickeysRepo, provider, username)
+}
+
 func NewServer(logger *zap.Logger, sourcesRepo sources.Repository, publickeysRepo publickeys.Repository) *Server {
 	return &Server{
 		logger:         logger,

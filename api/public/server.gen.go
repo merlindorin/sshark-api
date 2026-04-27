@@ -6,6 +6,7 @@ package public
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	externalRef0 "github.com/merlindorin/sshark-api/api/common"
@@ -33,6 +34,12 @@ const (
 	SearchGPGKeysParamsFieldsSourceUserId   SearchGPGKeysParamsFields = "source.user_id"
 	SearchGPGKeysParamsFieldsSourceUsername SearchGPGKeysParamsFields = "source.username"
 	SearchGPGKeysParamsFieldsUserIds        SearchGPGKeysParamsFields = "user_ids"
+)
+
+// Defines values for GetSourceByProviderAndUsernameParamsProvider.
+const (
+	Github GetSourceByProviderAndUsernameParamsProvider = "github"
+	Gitlab GetSourceByProviderAndUsernameParamsProvider = "gitlab"
 )
 
 // Defines values for SearchSSHKeysParamsFields.
@@ -110,6 +117,36 @@ type SSHSearchResponse struct {
 	Total int `json:"total"`
 }
 
+// SourceDetail Source (provider+username) with embedded SSH and GPG keys
+type SourceDetail struct {
+	// CreatedAt First time this source was indexed
+	CreatedAt time.Time `json:"created_at"`
+
+	// GpgKeys GPG public keys for this source
+	GpgKeys []externalRef0.GPGPublicKey `json:"gpg_keys"`
+
+	// Id Source identifier
+	Id openapi_types.UUID `json:"id"`
+
+	// Provider Provider name
+	Provider string `json:"provider"`
+
+	// SshKeys SSH public keys for this source
+	SshKeys []externalRef0.SSHPublicKey `json:"ssh_keys"`
+
+	// UpdatedAt Last update timestamp
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Uri Source URL
+	Uri string `json:"uri"`
+
+	// UserId Provider user ID
+	UserId string `json:"user_id"`
+
+	// Username Provider username
+	Username string `json:"username"`
+}
+
 // Statistics defines model for Statistics.
 type Statistics struct {
 	Facets map[string][]Facet `json:"facets"`
@@ -135,6 +172,9 @@ type SearchGPGKeysParams struct {
 
 // SearchGPGKeysParamsFields defines parameters for SearchGPGKeys.
 type SearchGPGKeysParamsFields string
+
+// GetSourceByProviderAndUsernameParamsProvider defines parameters for GetSourceByProviderAndUsername.
+type GetSourceByProviderAndUsernameParamsProvider string
 
 // SearchSSHKeysParams defines parameters for SearchSSHKeys.
 type SearchSSHKeysParams struct {
@@ -165,6 +205,9 @@ type ServerInterface interface {
 	// Get public key by ID
 	// (GET /publickeys/{id})
 	GetPublicKeyById(c *gin.Context, id openapi_types.UUID)
+	// Get source with all SSH and GPG keys
+	// (GET /sources/{provider}/{username})
+	GetSourceByProviderAndUsername(c *gin.Context, provider GetSourceByProviderAndUsernameParamsProvider, username string)
 	// Search SSH keys
 	// (GET /ssh/search)
 	SearchSSHKeys(c *gin.Context, params SearchSSHKeysParams)
@@ -262,6 +305,39 @@ func (siw *ServerInterfaceWrapper) GetPublicKeyById(c *gin.Context) {
 	}
 
 	siw.Handler.GetPublicKeyById(c, id)
+}
+
+// GetSourceByProviderAndUsername operation middleware
+func (siw *ServerInterfaceWrapper) GetSourceByProviderAndUsername(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "provider" -------------
+	var provider GetSourceByProviderAndUsernameParamsProvider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", c.Param("provider"), &provider, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter provider: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "username" -------------
+	var username string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", c.Param("username"), &username, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter username: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSourceByProviderAndUsername(c, provider, username)
 }
 
 // SearchSSHKeys operation middleware
@@ -364,6 +440,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.GET(options.BaseURL+"/gpg/search", wrapper.SearchGPGKeys)
 	router.GET(options.BaseURL+"/publickeys/:id", wrapper.GetPublicKeyById)
+	router.GET(options.BaseURL+"/sources/:provider/:username", wrapper.GetSourceByProviderAndUsername)
 	router.GET(options.BaseURL+"/ssh/search", wrapper.SearchSSHKeys)
 	router.GET(options.BaseURL+"/stats", wrapper.GetStats)
 }

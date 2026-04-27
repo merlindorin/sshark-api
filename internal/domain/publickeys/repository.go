@@ -13,6 +13,7 @@ type Repository interface {
 	SearchWithQuery(
 		ctx context.Context, keyType KeyType, whereClause string, args []any, limit, offset int,
 	) (*SearchResult, error)
+	ListBySourceID(ctx context.Context, sourceID uuid.UUID, keyType KeyType) ([]Entity, error)
 	Create(ctx context.Context, entity *Entity) error
 	CreateBatch(ctx context.Context, entities []Entity) error
 	Update(ctx context.Context, entity *Entity) error

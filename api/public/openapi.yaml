@@ -55,6 +55,61 @@ paths:
             application/json:
               schema:
                 $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+  /sources/{provider}/{username}:
+    get:
+      tags:
+        - Sources
+      summary: Get source with all SSH and GPG keys
+      description: |
+        Retrieve a single source (provider+username) with all its SSH and GPG keys.
+
+        Useful for building per-user pages such as `/sources/github/torvalds`.
+        Responses are cacheable; the server emits `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400`.
+      operationId: getSourceByProviderAndUsername
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Provider identifier
+          schema:
+            type: string
+            enum: [github, gitlab]
+          example: github
+        - name: username
+          in: path
+          required: true
+          description: Provider username
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          example: torvalds
+      responses:
+        '200':
+          description: Source details with SSH and GPG keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceDetail'
+        '400':
+          description: Invalid provider or username
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
   /stats:
     get:
       tags:
@@ -344,6 +399,59 @@ components:
           description: The search query that was executed
           example: "@user:{torvalds}"
 
+    SourceDetail:
+      type: object
+      description: Source (provider+username) with embedded SSH and GPG keys
+      required:
+        - id
+        - provider
+        - user_id
+        - username
+        - uri
+        - created_at
+        - updated_at
+        - ssh_keys
+        - gpg_keys
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Source identifier
+        provider:
+          type: string
+          description: Provider name
+          example: github
+        user_id:
+          type: string
+          description: Provider user ID
+          example: "12345"
+        username:
+          type: string
+          description: Provider username
+          example: torvalds
+        uri:
+          type: string
+          description: Source URL
+          example: https://github.com/torvalds
+        created_at:
+          type: string
+          format: date-time
+          description: First time this source was indexed
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        ssh_keys:
+          type: array
+          items:
+            $ref: '../common/openapi.yaml#/components/schemas/SSHPublicKey'
+          description: SSH public keys for this source
+        gpg_keys:
+          type: array
+          items:
+            $ref: '../common/openapi.yaml#/components/schemas/GPGPublicKey'
+          description: GPG public keys for this source
+
     Statistics:
       type: object
       required:
@@ -406,5 +514,7 @@ tags:
     description: GPG key search operations
   - name: Public Keys
     description: Public key operations
+  - name: Sources
+    description: Source (provider+username) operations
   - name: Statistics
     description: Aggregated statistics

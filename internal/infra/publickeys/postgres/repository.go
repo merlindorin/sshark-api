@@ -336,6 +336,32 @@ func (r *Repository) DeleteBySourceID(ctx context.Context, sourceID uuid.UUID) e
 	return err
 }
 
+func (r *Repository) ListBySourceID(
+	ctx context.Context,
+	sourceID uuid.UUID,
+	keyType publickeys.KeyType,
+) ([]publickeys.Entity, error) {
+	query := `
+		SELECT pk.id, pk.source_id, pk.key_type, pk.key_data, pk.fingerprint,
+		       pk.created_at, pk.updated_at
+		FROM public_keys pk
+		WHERE pk.source_id = $1`
+	args := []any{sourceID}
+	if keyType != "" {
+		query += ` AND pk.key_type = $2`
+		args = append(args, keyType)
+	}
+	query += ` ORDER BY pk.created_at DESC`
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.scanPublicKeys(ctx, rows)
+}
+
 func (r *Repository) AddScrapeHistory(ctx context.Context, history *publickeys.ScrapeHistory) error {
 	if history.ID == uuid.Nil {
 		history.ID = uuid.New()
