@@ -32,6 +32,7 @@ const maxKeysPerSource = 200
 type KeyServices struct {
 	Sources    sources.Repository
 	PublicKeys publickeys.Repository
+	Profiles   ProfileServices
 	Identities *identity.Resolver
 	// Scrapers refreshes a single account on demand, keyed by provider. A provider without a
 	// scraper can still be listed, it just cannot be refreshed.
@@ -114,6 +115,16 @@ func RefreshMyKeys(c *gin.Context, logger *zap.Logger, services KeyServices) {
 			zap.Int("keys_updated", result.KeysUpdated),
 			zap.Int("keys_removed", result.KeysRemoved),
 		)
+	}
+
+	// A refresh may have created the sources for accounts sshark had never crawled, so record
+	// ownership now that they exist.
+	if profile, profileErr := services.Profiles.ensureProfile(ctx, logger, subject); profileErr == nil {
+		accounts := make([]identity.Account, 0, len(candidates))
+		for _, cand := range candidates {
+			accounts = append(accounts, cand.account)
+		}
+		services.Profiles.syncOwnership(ctx, logger, profile, accounts)
 	}
 
 	response, err := services.buildResponse(ctx, logger, subject, candidates)
@@ -508,5 +519,8 @@ func toSource(source *sources.Entity) *common.Source {
 		Username: &source.Username,
 		Uri:      &source.URI,
 		UserId:   &source.UserID,
+		// Only set when someone proved they own the account, which is what makes a key
+		// attributable to a person rather than merely published under a name.
+		ProfileUsername: source.ProfileUsername,
 	}
 }

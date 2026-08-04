@@ -233,6 +233,12 @@ components:
           type: string
           description: Source URL
           example: https://github.com/merlindorin
+        profile_username:
+          type: string
+          description: |
+            Username of the SShark account that proved it owns this provider account. Absent
+            when nobody has claimed it, which is the case for most indexed sources.
+          example: merlindorin
 
     ErrorResponse:
       type: object

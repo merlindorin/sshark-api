@@ -22,15 +22,18 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*sources.Entity, error) {
 	var entity sources.Entity
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, provider, user_id, username, uri, created_at, updated_at
-		FROM sources
-		WHERE id = $1
+		SELECT s.id, s.provider, s.user_id, s.username, s.uri, s.profile_id, p.username,
+		       s.created_at, s.updated_at
+		FROM sources s LEFT JOIN profiles p ON p.id = s.profile_id
+		WHERE s.id = $1
 	`, id).Scan(
 		&entity.ID,
 		&entity.Provider,
 		&entity.UserID,
 		&entity.Username,
 		&entity.URI,
+		&entity.ProfileID,
+		&entity.ProfileUsername,
 		&entity.CreatedAt,
 		&entity.UpdatedAt,
 	)
@@ -46,15 +49,18 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*sources.Entity, er
 func (r *Repository) GetByProviderAndUserID(ctx context.Context, provider, userID string) (*sources.Entity, error) {
 	var entity sources.Entity
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, provider, user_id, username, uri, created_at, updated_at
-		FROM sources
-		WHERE provider = $1 AND user_id = $2
+		SELECT s.id, s.provider, s.user_id, s.username, s.uri, s.profile_id, p.username,
+		       s.created_at, s.updated_at
+		FROM sources s LEFT JOIN profiles p ON p.id = s.profile_id
+		WHERE s.provider = $1 AND s.user_id = $2
 	`, provider, userID).Scan(
 		&entity.ID,
 		&entity.Provider,
 		&entity.UserID,
 		&entity.Username,
 		&entity.URI,
+		&entity.ProfileID,
+		&entity.ProfileUsername,
 		&entity.CreatedAt,
 		&entity.UpdatedAt,
 	)
@@ -70,15 +76,18 @@ func (r *Repository) GetByProviderAndUserID(ctx context.Context, provider, userI
 func (r *Repository) GetByProviderAndUsername(ctx context.Context, provider, username string) (*sources.Entity, error) {
 	var entity sources.Entity
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, provider, user_id, username, uri, created_at, updated_at
-		FROM sources
-		WHERE provider = $1 AND username = $2
+		SELECT s.id, s.provider, s.user_id, s.username, s.uri, s.profile_id, p.username,
+		       s.created_at, s.updated_at
+		FROM sources s LEFT JOIN profiles p ON p.id = s.profile_id
+		WHERE s.provider = $1 AND s.username = $2
 	`, provider, username).Scan(
 		&entity.ID,
 		&entity.Provider,
 		&entity.UserID,
 		&entity.Username,
 		&entity.URI,
+		&entity.ProfileID,
+		&entity.ProfileUsername,
 		&entity.CreatedAt,
 		&entity.UpdatedAt,
 	)
@@ -99,9 +108,10 @@ func (r *Repository) List(ctx context.Context, limit, offset int) (*sources.List
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, provider, user_id, username, uri, created_at, updated_at
-		FROM sources
-		ORDER BY created_at DESC
+		SELECT s.id, s.provider, s.user_id, s.username, s.uri, s.profile_id, p.username,
+		       s.created_at, s.updated_at
+		FROM sources s LEFT JOIN profiles p ON p.id = s.profile_id
+		ORDER BY s.created_at DESC
 		LIMIT $1 OFFSET $2
 	`, limit, offset)
 	if err != nil {
@@ -118,6 +128,8 @@ func (r *Repository) List(ctx context.Context, limit, offset int) (*sources.List
 			&entity.UserID,
 			&entity.Username,
 			&entity.URI,
+			&entity.ProfileID,
+			&entity.ProfileUsername,
 			&entity.CreatedAt,
 			&entity.UpdatedAt,
 		)
@@ -250,4 +262,18 @@ func (r *Repository) getValueFacet(ctx context.Context, query string) (sources.F
 		facet.Data = append(facet.Data, sources.FacetValue{Value: value, Count: int(count)})
 	}
 	return facet, rows.Err()
+}
+
+func (r *Repository) SetProfile(ctx context.Context, sourceID uuid.UUID, profileID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `UPDATE sources SET profile_id = $2, updated_at = NOW() WHERE id = $1`,
+		sourceID, profileID)
+
+	return err
+}
+
+func (r *Repository) ClearProfile(ctx context.Context, profileID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `UPDATE sources SET profile_id = NULL, updated_at = NOW() WHERE profile_id = $1`,
+		profileID)
+
+	return err
 }

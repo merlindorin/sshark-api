@@ -30,4 +30,11 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	Exists(ctx context.Context, provider, userID string) (bool, error)
 	GetStats(ctx context.Context) (*Stats, error)
+
+	// SetProfile records which sshark account owns this source.
+	SetProfile(ctx context.Context, sourceID uuid.UUID, profileID uuid.UUID) error
+
+	// ClearProfile releases every source owned by a profile, so ownership can be rebuilt from
+	// the accounts currently connected.
+	ClearProfile(ctx context.Context, profileID uuid.UUID) error
 }

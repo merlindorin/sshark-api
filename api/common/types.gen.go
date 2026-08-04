@@ -205,6 +205,10 @@ type Source struct {
 	// Id Source identifier
 	Id *openapi_types.UUID `json:"id,omitempty"`
 
+	// ProfileUsername Username of the SShark account that proved it owns this provider account. Absent
+	// when nobody has claimed it, which is the case for most indexed sources.
+	ProfileUsername *string `json:"profile_username,omitempty"`
+
 	// Provider Provider name
 	Provider *string `json:"provider,omitempty"`
 

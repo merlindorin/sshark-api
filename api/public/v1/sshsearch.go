@@ -171,11 +171,12 @@ func entityToSSHPublicKey(entity publickeys.Entity, source *sources.Entity) comm
 
 	if source != nil {
 		pk.Source = &common.Source{
-			Id:       &source.ID,
-			Provider: &source.Provider,
-			Username: &source.Username,
-			Uri:      &source.URI,
-			UserId:   &source.UserID,
+			Id:              &source.ID,
+			Provider:        &source.Provider,
+			Username:        &source.Username,
+			Uri:             &source.URI,
+			UserId:          &source.UserID,
+			ProfileUsername: source.ProfileUsername,
 		}
 	}
 
@@ -199,11 +200,12 @@ func entityToGPGPublicKey(entity publickeys.Entity, source *sources.Entity) comm
 
 	if source != nil {
 		pk.Source = &common.Source{
-			Id:       &source.ID,
-			Provider: &source.Provider,
-			Username: &source.Username,
-			Uri:      &source.URI,
-			UserId:   &source.UserID,
+			Id:              &source.ID,
+			Provider:        &source.Provider,
+			Username:        &source.Username,
+			Uri:             &source.URI,
+			UserId:          &source.UserID,
+			ProfileUsername: source.ProfileUsername,
 		}
 	}
 

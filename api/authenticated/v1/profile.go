@@ -14,6 +14,7 @@ import (
 	"github.com/merlindorin/sshark-api/api/authenticated"
 	"github.com/merlindorin/sshark-api/api/common"
 	"github.com/merlindorin/sshark-api/internal/domain/profiles"
+	"github.com/merlindorin/sshark-api/internal/domain/sources"
 	"github.com/merlindorin/sshark-api/internal/infra/identity"
 )
 
@@ -24,7 +25,41 @@ const maxUsernameSuffix = 20
 // ProfileServices holds what the profile endpoints need to read and claim usernames.
 type ProfileServices struct {
 	Profiles   profiles.Repository
+	Sources    sources.Repository
 	Identities *identity.Resolver
+}
+
+// syncOwnership rebuilds which sources this profile owns from the accounts currently
+// connected. Rebuilding rather than adding means disconnecting an account gives its source
+// back, so a key stops being attributed to someone who no longer proves they hold it.
+func (s ProfileServices) syncOwnership(
+	ctx context.Context,
+	logger *zap.Logger,
+	profile *profiles.Entity,
+	accounts []identity.Account,
+) {
+	if err := s.Sources.ClearProfile(ctx, profile.ID); err != nil {
+		logger.Warn("failed to release previously owned sources", zap.Error(err))
+		return
+	}
+
+	for _, account := range accounts {
+		source, err := s.Sources.GetByProviderAndUsername(ctx, string(account.Provider), account.Username)
+		if err != nil {
+			// A connected account sshark has not crawled yet simply has nothing to mark.
+			if !errors.Is(err, sources.ErrSourceNotFound) {
+				logger.Warn("failed to look up source for connected account",
+					zap.String("provider", string(account.Provider)),
+					zap.String("username", account.Username),
+					zap.Error(err))
+			}
+			continue
+		}
+
+		if setErr := s.Sources.SetProfile(ctx, source.ID, profile.ID); setErr != nil {
+			logger.Warn("failed to mark source ownership", zap.Error(setErr))
+		}
+	}
 }
 
 // SetMyUsername claims a username for the signed-in user, moving their public profile to it.
@@ -121,7 +156,17 @@ func DeleteMyProfile(c *gin.Context, logger *zap.Logger, services ProfileService
 		return
 	}
 
-	if err := services.Profiles.DeleteByClerkUserID(c.Request.Context(), subject); err != nil {
+	ctx := c.Request.Context()
+
+	// Release the sources first: once the profile row is gone the ON DELETE SET NULL takes
+	// care of it, but doing it explicitly keeps the two consistent even if the delete fails.
+	if profile, err := services.Profiles.GetByClerkUserID(ctx, subject); err == nil {
+		if clearErr := services.Sources.ClearProfile(ctx, profile.ID); clearErr != nil {
+			logger.Warn("failed to release owned sources", zap.Error(clearErr))
+		}
+	}
+
+	if err := services.Profiles.DeleteByClerkUserID(ctx, subject); err != nil {
 		logger.Error("failed to delete profile", zap.Error(err))
 		_ = c.Error(common.InternalError(c))
 		return
@@ -175,6 +220,8 @@ func (s ProfileServices) ensureProfile(
 	}
 
 	logger.Info("profile created", zap.String("username", profile.Username))
+
+	s.syncOwnership(ctx, logger, profile, accounts)
 
 	return profile, nil
 }

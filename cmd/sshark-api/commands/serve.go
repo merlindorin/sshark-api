@@ -130,17 +130,19 @@ func (s *Serve) Run(
 	apiPublicV1Handler := apiPublicV1.NewServer(namedLogger, sourcesRepo, publickeysRepo, profilesRepo, identities)
 	apiPublic.RegisterHandlers(router.Group(apiPath), apiPublicV1Handler)
 
+	profileServices := apiAuthenticatedV1.ProfileServices{
+		Profiles:   profilesRepo,
+		Sources:    sourcesRepo,
+		Identities: identities,
+	}
+
 	keyServices := apiAuthenticatedV1.KeyServices{
 		Sources:    sourcesRepo,
 		PublicKeys: publickeysRepo,
+		Profiles:   profileServices,
 		Identities: identities,
 		Scrapers: s.buildScrapers(
 			namedLogger, sourcesRepo, publickeysRepo, scraperrepo.NewProgressRepository(pool)),
-	}
-
-	profileServices := apiAuthenticatedV1.ProfileServices{
-		Profiles:   profilesRepo,
-		Identities: identities,
 	}
 
 	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(namedLogger, keyServices, profileServices)
