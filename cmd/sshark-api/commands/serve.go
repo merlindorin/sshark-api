@@ -28,7 +28,16 @@ import (
 	apiPublic "github.com/merlindorin/sshark-api/api/public"
 
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
+	"github.com/merlindorin/sshark-api/internal/domain/publickeys"
+	"github.com/merlindorin/sshark-api/internal/domain/scraper"
+	"github.com/merlindorin/sshark-api/internal/domain/sources"
+	"github.com/merlindorin/sshark-api/internal/infra/fetchers/github"
+	"github.com/merlindorin/sshark-api/internal/infra/fetchers/gitlab"
+	"github.com/merlindorin/sshark-api/internal/infra/identity"
+	profilesrepo "github.com/merlindorin/sshark-api/internal/infra/profiles/postgres"
 	publickeysrepo "github.com/merlindorin/sshark-api/internal/infra/publickeys/postgres"
+	infrascraper "github.com/merlindorin/sshark-api/internal/infra/scraper"
+	scraperrepo "github.com/merlindorin/sshark-api/internal/infra/scraper/postgres"
 	sourcesrepo "github.com/merlindorin/sshark-api/internal/infra/sources/postgres"
 	"github.com/merlindorin/sshark-api/internal/middleware"
 	"github.com/merlindorin/sshark-api/internal/otel"
@@ -39,8 +48,32 @@ const (
 )
 
 type Serve struct {
-	ClerkToken string        `env:"CLERK_TOKEN" help:"Clerk to use for auth"`
-	Timeout    time.Duration `default:"5s" help:"HTTPServer request timeout"`
+	ClerkToken  string        `env:"CLERK_TOKEN" help:"Clerk to use for auth"`
+	GithubToken string        `env:"GITHUB_TOKEN" help:"GitHub API token used to refresh a user's keys on demand"`
+	GitlabToken string        `env:"GITLAB_TOKEN" help:"GitLab API token used to refresh a user's keys on demand"`
+	Timeout     time.Duration `default:"5s" help:"HTTPServer request timeout"`
+}
+
+// buildScrapers wires one on-demand scraper per provider, so a signed-in user can pull their
+// own keys straight away instead of waiting for the background crawler to come around.
+func (s *Serve) buildScrapers(
+	logger *zap.Logger,
+	sourcesRepo sources.Repository,
+	publickeysRepo publickeys.Repository,
+	progressRepo scraper.ProgressRepository,
+) map[scraper.Provider]scraper.Service {
+	cfg := infrascraper.Config{}
+
+	return map[scraper.Provider]scraper.Service{
+		scraper.ProviderGitHub: infrascraper.NewService(
+			logger, github.NewFetcher(github.WithToken(s.GithubToken)),
+			sourcesRepo, publickeysRepo, progressRepo, cfg,
+		),
+		scraper.ProviderGitLab: infrascraper.NewService(
+			logger, gitlab.NewFetcher(gitlab.WithToken(s.GitlabToken)),
+			sourcesRepo, publickeysRepo, progressRepo, cfg,
+		),
+	}
 }
 
 func (s *Serve) Run(
@@ -78,6 +111,8 @@ func (s *Serve) Run(
 
 	sourcesRepo := sourcesrepo.NewRepository(pool)
 	publickeysRepo := publickeysrepo.NewRepository(pool)
+	profilesRepo := profilesrepo.NewRepository(pool)
+	identities := identity.NewResolver()
 
 	router := gin.New()
 	router.Use(otelgin.Middleware(name))
@@ -92,10 +127,23 @@ func (s *Serve) Run(
 	apiPrivateV1Handler := apiPrivateV1.NewServer(namedLogger)
 	apiPrivate.RegisterHandlers(router, apiPrivateV1Handler)
 
-	apiPublicV1Handler := apiPublicV1.NewServer(namedLogger, sourcesRepo, publickeysRepo)
+	apiPublicV1Handler := apiPublicV1.NewServer(namedLogger, sourcesRepo, publickeysRepo, profilesRepo, identities)
 	apiPublic.RegisterHandlers(router.Group(apiPath), apiPublicV1Handler)
 
-	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(namedLogger)
+	keyServices := apiAuthenticatedV1.KeyServices{
+		Sources:    sourcesRepo,
+		PublicKeys: publickeysRepo,
+		Identities: identities,
+		Scrapers: s.buildScrapers(
+			namedLogger, sourcesRepo, publickeysRepo, scraperrepo.NewProgressRepository(pool)),
+	}
+
+	profileServices := apiAuthenticatedV1.ProfileServices{
+		Profiles:   profilesRepo,
+		Identities: identities,
+	}
+
+	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(namedLogger, keyServices, profileServices)
 	apiAuthenticated.RegisterHandlers(router.Group(apiPath, middleware.RequireAuth()), apiAuthenticatedV1Handler)
 
 	errs, ctx := errgroup.WithContext(ctx)

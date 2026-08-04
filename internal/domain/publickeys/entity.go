@@ -14,15 +14,18 @@ const (
 )
 
 type Entity struct {
-	ID          uuid.UUID    `json:"id"`
-	SourceID    uuid.UUID    `json:"source_id"`
-	KeyType     KeyType      `json:"key_type"`
-	KeyData     []byte       `json:"key_data"`
-	Fingerprint string       `json:"fingerprint"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
-	SSHMetadata *SSHMetadata `json:"ssh_metadata,omitempty"`
-	GPGMetadata *GPGMetadata `json:"gpg_metadata,omitempty"`
+	ID       uuid.UUID `json:"id"`
+	SourceID uuid.UUID `json:"source_id"`
+	KeyType  KeyType   `json:"key_type"`
+	KeyData  []byte    `json:"key_data"`
+	// ProviderKeyID is the identifier the provider assigned to this key. It is required to
+	// act on the key through the provider API (for instance deleting it on the user's behalf).
+	ProviderKeyID *string      `json:"provider_key_id,omitempty"`
+	Fingerprint   string       `json:"fingerprint"`
+	CreatedAt     time.Time    `json:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
+	SSHMetadata   *SSHMetadata `json:"ssh_metadata,omitempty"`
+	GPGMetadata   *GPGMetadata `json:"gpg_metadata,omitempty"`
 }
 
 type SSHMetadata struct {

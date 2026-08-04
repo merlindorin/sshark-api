@@ -96,6 +96,42 @@ type GPGSearchResponse struct {
 	Total int `json:"total"`
 }
 
+// ProfileAccount A provider account the profile owner proved they own
+type ProfileAccount struct {
+	// Provider Provider name
+	Provider string `json:"provider"`
+
+	// Uri Profile URL at the provider
+	Uri *string `json:"uri,omitempty"`
+
+	// Username Login at the provider
+	Username string `json:"username"`
+}
+
+// PublicProfile The public page of an SShark account
+type PublicProfile struct {
+	// Accounts Provider accounts connected to this profile
+	Accounts []ProfileAccount `json:"accounts"`
+
+	// AvatarUrl Avatar taken from the connected accounts
+	AvatarUrl *string `json:"avatar_url,omitempty"`
+
+	// CreatedAt When the account joined SShark
+	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayName Name taken from the connected accounts
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// GpgKeys GPG keys published under the connected accounts
+	GpgKeys []externalRef0.GPGPublicKey `json:"gpg_keys"`
+
+	// SshKeys SSH keys published under the connected accounts
+	SshKeys []externalRef0.SSHPublicKey `json:"ssh_keys"`
+
+	// Username The username the owner claimed
+	Username string `json:"username"`
+}
+
 // SSHSearchResponse defines model for SSHSearchResponse.
 type SSHSearchResponse struct {
 	// Duration Query execution duration in nanoseconds
@@ -241,6 +277,9 @@ type ServerInterface interface {
 	// Get statistics
 	// (GET /stats)
 	GetStats(c *gin.Context)
+	// Get a public SShark profile
+	// (GET /users/{username})
+	GetUserProfile(c *gin.Context, username string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -464,6 +503,30 @@ func (siw *ServerInterfaceWrapper) GetStats(c *gin.Context) {
 	siw.Handler.GetStats(c)
 }
 
+// GetUserProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetUserProfile(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "username" -------------
+	var username string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", c.Param("username"), &username, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter username: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetUserProfile(c, username)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -497,4 +560,5 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/sources/:provider/:username", wrapper.GetSourceByProviderAndUsername)
 	router.GET(options.BaseURL+"/ssh/search", wrapper.SearchSSHKeys)
 	router.GET(options.BaseURL+"/stats", wrapper.GetStats)
+	router.GET(options.BaseURL+"/users/:username", wrapper.GetUserProfile)
 }

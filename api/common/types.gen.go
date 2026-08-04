@@ -11,10 +11,18 @@ import (
 
 // Defines values for ErrorResponseErrorCode.
 const (
-	INTERNALERROR      ErrorResponseErrorCode = "INTERNAL_ERROR"
-	INVALIDPATHPARAM   ErrorResponseErrorCode = "INVALID_PATH_PARAM"
-	INVALIDQUERYPARAM  ErrorResponseErrorCode = "INVALID_QUERY_PARAM"
-	INVALIDSEARCHQUERY ErrorResponseErrorCode = "INVALID_SEARCH_QUERY"
+	INTERNALERROR        ErrorResponseErrorCode = "INTERNAL_ERROR"
+	INVALIDPATHPARAM     ErrorResponseErrorCode = "INVALID_PATH_PARAM"
+	INVALIDQUERYPARAM    ErrorResponseErrorCode = "INVALID_QUERY_PARAM"
+	INVALIDSEARCHQUERY   ErrorResponseErrorCode = "INVALID_SEARCH_QUERY"
+	INVALIDUSERNAME      ErrorResponseErrorCode = "INVALID_USERNAME"
+	KEYNOTFOUND          ErrorResponseErrorCode = "KEY_NOT_FOUND"
+	PROFILENOTFOUND      ErrorResponseErrorCode = "PROFILE_NOT_FOUND"
+	PROVIDERFORBIDDEN    ErrorResponseErrorCode = "PROVIDER_FORBIDDEN"
+	PROVIDERNOTCONNECTED ErrorResponseErrorCode = "PROVIDER_NOT_CONNECTED"
+	PROVIDERUNAVAILABLE  ErrorResponseErrorCode = "PROVIDER_UNAVAILABLE"
+	UNAUTHORIZED         ErrorResponseErrorCode = "UNAUTHORIZED"
+	USERNAMETAKEN        ErrorResponseErrorCode = "USERNAME_TAKEN"
 )
 
 // Defines values for KeyType.

@@ -14,6 +14,43 @@ servers:
 security: []
 
 paths:
+  /users/{username}:
+    get:
+      tags:
+        - Users
+      summary: Get a public SShark profile
+      description: |
+        Retrieve the public profile of an SShark account by the username its owner claimed,
+        along with the provider accounts they connected and the keys published under them.
+      operationId: getUserProfile
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: The username claimed by the account owner
+          schema:
+            type: string
+          example: merlindorin
+      responses:
+        '200':
+          description: The public profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicProfile'
+        '404':
+          description: No account holds this username
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to load the profile
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
   /publickeys/{id}:
     get:
       tags:
@@ -360,6 +397,69 @@ paths:
 
 components:
   schemas:
+    ProfileAccount:
+      type: object
+      description: A provider account the profile owner proved they own
+      required:
+        - provider
+        - username
+      properties:
+        provider:
+          type: string
+          description: Provider name
+          example: github
+        username:
+          type: string
+          description: Login at the provider
+          example: merlindorin
+        uri:
+          type: string
+          format: uri
+          description: Profile URL at the provider
+          example: https://github.com/merlindorin
+
+    PublicProfile:
+      type: object
+      description: The public page of an SShark account
+      required:
+        - username
+        - created_at
+        - accounts
+        - ssh_keys
+        - gpg_keys
+      properties:
+        username:
+          type: string
+          description: The username the owner claimed
+          example: merlindorin
+        display_name:
+          type: string
+          description: Name taken from the connected accounts
+          example: Romain DARY
+        avatar_url:
+          type: string
+          format: uri
+          description: Avatar taken from the connected accounts
+        created_at:
+          type: string
+          format: date-time
+          description: When the account joined SShark
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileAccount'
+          description: Provider accounts connected to this profile
+        ssh_keys:
+          type: array
+          items:
+            $ref: '../common/openapi.yaml#/components/schemas/SSHPublicKey'
+          description: SSH keys published under the connected accounts
+        gpg_keys:
+          type: array
+          items:
+            $ref: '../common/openapi.yaml#/components/schemas/GPGPublicKey'
+          description: GPG keys published under the connected accounts
+
     SSHSearchResponse:
       type: object
       required:

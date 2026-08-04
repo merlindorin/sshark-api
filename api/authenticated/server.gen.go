@@ -6,8 +6,10 @@ package authenticated
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	externalRef0 "github.com/merlindorin/sshark-api/api/common"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -156,6 +158,25 @@ type ApiKeyWithSecretObject string
 // ApiKeyWithSecretType API key type
 type ApiKeyWithSecretType string
 
+// ConnectedAccount A provider account the authenticated user has proven they own
+type ConnectedAccount struct {
+	// CanRevoke Whether sshark holds a delegated credential able to delete keys at the provider.
+	// When false, missing_scopes explains what the grant lacks.
+	CanRevoke bool `json:"can_revoke"`
+
+	// MissingScopes OAuth scopes the grant is missing to manage keys
+	MissingScopes *[]string `json:"missing_scopes,omitempty"`
+
+	// Provider Provider name
+	Provider string `json:"provider"`
+
+	// Uri Profile URL at the provider
+	Uri *string `json:"uri,omitempty"`
+
+	// Username Login at the provider
+	Username string `json:"username"`
+}
+
 // CreateApiKeyRequest defines model for CreateApiKeyRequest.
 type CreateApiKeyRequest struct {
 	// Claims Custom claims to associate with the API key
@@ -172,6 +193,116 @@ type CreateApiKeyRequest struct {
 
 	// Scopes API key scopes
 	Scopes *[]string `json:"scopes,omitempty"`
+}
+
+// MyGPGKey A GPG public key attributed to the authenticated user
+type MyGPGKey struct {
+	// Algorithm GPG key algorithm
+	Algorithm *string `json:"algorithm,omitempty"`
+
+	// Capabilities Key capabilities
+	Capabilities *[]string `json:"capabilities,omitempty"`
+
+	// CreatedAt Creation timestamp
+	CreatedAt time.Time `json:"created_at"`
+
+	// ExpiresAt Key expiration date
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+
+	// Fingerprint Key fingerprint
+	Fingerprint string `json:"fingerprint"`
+
+	// Id Unique identifier for the public key
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyBits Key size in bits
+	KeyBits *int `json:"key_bits,omitempty"`
+
+	// KeyData Raw key data (base64 encoded)
+	KeyData string `json:"key_data"`
+
+	// Revocable Whether this key can be revoked through sshark
+	Revocable bool `json:"revocable"`
+
+	// Source Key source information
+	Source *externalRef0.Source `json:"source,omitempty"`
+
+	// UpdatedAt Last update timestamp
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// UserIds GPG user IDs (usually email addresses)
+	UserIds *[]string `json:"user_ids,omitempty"`
+
+	// Verified Whether the key belongs to a provider account the user proved they own by
+	// signing in with it.
+	Verified bool `json:"verified"`
+}
+
+// MyKeysResponse defines model for MyKeysResponse.
+type MyKeysResponse struct {
+	// Accounts Provider accounts the user has connected
+	Accounts []ConnectedAccount `json:"accounts"`
+
+	// GpgKeys GPG keys attributed to the user
+	GpgKeys []MyGPGKey `json:"gpg_keys"`
+
+	// RefreshedAt When the keys were last pulled from the providers, set by a refresh
+	RefreshedAt *time.Time `json:"refreshed_at,omitempty"`
+
+	// SshKeys SSH keys attributed to the user
+	SshKeys []MySSHKey `json:"ssh_keys"`
+}
+
+// MyProfile The signed-in user's SShark account
+type MyProfile struct {
+	// ProfileUrl Path of the public profile
+	ProfileUrl string `json:"profile_url"`
+
+	// Username The username the public profile is served from
+	Username string `json:"username"`
+}
+
+// MySSHKey An SSH public key attributed to the authenticated user
+type MySSHKey struct {
+	// Algorithm SSH key algorithm
+	Algorithm *string `json:"algorithm,omitempty"`
+
+	// Comment Comment from the SSH key
+	Comment *string `json:"comment,omitempty"`
+
+	// CreatedAt Creation timestamp
+	CreatedAt time.Time `json:"created_at"`
+
+	// Fingerprint Key fingerprint
+	Fingerprint string `json:"fingerprint"`
+
+	// Id Unique identifier for the public key
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyBits Key size in bits
+	KeyBits *int `json:"key_bits,omitempty"`
+
+	// KeyData Raw key data (base64 encoded)
+	KeyData string `json:"key_data"`
+
+	// Revocable Whether this key can be revoked through sshark
+	Revocable bool `json:"revocable"`
+
+	// Source Key source information
+	Source *externalRef0.Source `json:"source,omitempty"`
+
+	// UpdatedAt Last update timestamp
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Verified Whether the key belongs to a provider account the user proved they own by
+	// signing in with it.
+	Verified bool `json:"verified"`
+}
+
+// SetUsernameRequest defines model for SetUsernameRequest.
+type SetUsernameRequest struct {
+	// Username The username to claim
+	Username string `json:"username"`
 }
 
 // UserInfo defines model for UserInfo.
@@ -194,12 +325,36 @@ type UserInfo struct {
 	// LastName User's last name
 	LastName *string `json:"last_name,omitempty"`
 
-	// Username Username
+	// ProfileUrl Path of the public profile
+	ProfileUrl *string `json:"profile_url,omitempty"`
+
+	// Username The SShark username this account's public profile is served from
 	Username *string `json:"username,omitempty"`
+}
+
+// UsernameAvailability defines model for UsernameAvailability.
+type UsernameAvailability struct {
+	// Available Whether the username can be claimed
+	Available bool `json:"available"`
+
+	// Reason Why the username cannot be claimed
+	Reason *string `json:"reason,omitempty"`
+
+	// Username The username that was checked
+	Username string `json:"username"`
+}
+
+// CheckUsernameAvailableParams defines parameters for CheckUsernameAvailable.
+type CheckUsernameAvailableParams struct {
+	// Username The username to check
+	Username string `form:"username" json:"username"`
 }
 
 // CreateApiKeyJSONRequestBody defines body for CreateApiKey for application/json ContentType.
 type CreateApiKeyJSONRequestBody = CreateApiKeyRequest
+
+// SetMyUsernameJSONRequestBody defines body for SetMyUsername for application/json ContentType.
+type SetMyUsernameJSONRequestBody = SetUsernameRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -215,6 +370,24 @@ type ServerInterface interface {
 	// Delete API key
 	// (DELETE /me/apikeys/{id})
 	DeleteApiKey(c *gin.Context, id string)
+	// List the authenticated user's public keys
+	// (GET /me/keys)
+	ListMyKeys(c *gin.Context)
+	// Refresh the authenticated user's public keys
+	// (POST /me/keys/refresh)
+	RefreshMyKeys(c *gin.Context)
+	// Revoke a public key
+	// (DELETE /me/keys/{id})
+	RevokeMyKey(c *gin.Context, id openapi_types.UUID)
+	// Release your SShark profile
+	// (DELETE /me/profile)
+	DeleteMyProfile(c *gin.Context)
+	// Claim or change your username
+	// (PUT /me/username)
+	SetMyUsername(c *gin.Context)
+	// Check whether a username can be claimed
+	// (GET /me/username/available)
+	CheckUsernameAvailable(c *gin.Context, params CheckUsernameAvailableParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -297,6 +470,127 @@ func (siw *ServerInterfaceWrapper) DeleteApiKey(c *gin.Context) {
 	siw.Handler.DeleteApiKey(c, id)
 }
 
+// ListMyKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListMyKeys(c *gin.Context) {
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListMyKeys(c)
+}
+
+// RefreshMyKeys operation middleware
+func (siw *ServerInterfaceWrapper) RefreshMyKeys(c *gin.Context) {
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RefreshMyKeys(c)
+}
+
+// RevokeMyKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeMyKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RevokeMyKey(c, id)
+}
+
+// DeleteMyProfile operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMyProfile(c *gin.Context) {
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteMyProfile(c)
+}
+
+// SetMyUsername operation middleware
+func (siw *ServerInterfaceWrapper) SetMyUsername(c *gin.Context) {
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SetMyUsername(c)
+}
+
+// CheckUsernameAvailable operation middleware
+func (siw *ServerInterfaceWrapper) CheckUsernameAvailable(c *gin.Context) {
+
+	var err error
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CheckUsernameAvailableParams
+
+	// ------------- Required query parameter "username" -------------
+
+	if paramValue := c.Query("username"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument username is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "username", c.Request.URL.Query(), &params.Username)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter username: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CheckUsernameAvailable(c, params)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -328,4 +622,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/me/apikeys", wrapper.ListApiKeys)
 	router.POST(options.BaseURL+"/me/apikeys", wrapper.CreateApiKey)
 	router.DELETE(options.BaseURL+"/me/apikeys/:id", wrapper.DeleteApiKey)
+	router.GET(options.BaseURL+"/me/keys", wrapper.ListMyKeys)
+	router.POST(options.BaseURL+"/me/keys/refresh", wrapper.RefreshMyKeys)
+	router.DELETE(options.BaseURL+"/me/keys/:id", wrapper.RevokeMyKey)
+	router.DELETE(options.BaseURL+"/me/profile", wrapper.DeleteMyProfile)
+	router.PUT(options.BaseURL+"/me/username", wrapper.SetMyUsername)
+	router.GET(options.BaseURL+"/me/username/available", wrapper.CheckUsernameAvailable)
 }

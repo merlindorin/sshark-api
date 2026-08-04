@@ -2,13 +2,10 @@ package github
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +13,7 @@ import (
 
 	"github.com/merlindorin/sshark-api/internal/domain/scraper"
 	"github.com/merlindorin/sshark-api/internal/infra/fetchers/gpgparse"
+	"github.com/merlindorin/sshark-api/internal/infra/fetchers/sshparse"
 )
 
 const (
@@ -142,6 +140,34 @@ func (f *Fetcher) ListUsers(ctx context.Context, cursor string, limit int) (*scr
 	return page, nil
 }
 
+// FetchUser fetches a single GitHub user by login, without their keys.
+func (f *Fetcher) FetchUser(ctx context.Context, username string) (*scraper.FetchedUser, error) {
+	if err := f.waitForRateLimit(ctx); err != nil {
+		return nil, err
+	}
+
+	var u githubUser
+
+	err := f.httpClient.Do(
+		ctx,
+		do.WithMethod(http.MethodGet),
+		do.WithPath("users/%s", username),
+		do.WithUnmarshalBody(&u))
+	if err != nil {
+		return nil, fmt.Errorf("cannot fetch user %s: %w", username, err)
+	}
+
+	if u.ID == 0 {
+		return nil, scraper.ErrUserNotFound
+	}
+
+	return &scraper.FetchedUser{
+		UserID:   strconv.Itoa(u.ID),
+		Username: u.Login,
+		URI:      u.HTMLURL,
+	}, nil
+}
+
 // FetchUserKeys fetches SSH keys for a user and populates the Keys field.
 func (f *Fetcher) FetchUserKeys(ctx context.Context, user *scraper.FetchedUser) error {
 	if err := f.waitForRateLimit(ctx); err != nil {
@@ -245,7 +271,8 @@ func parseGitHubGPGKey(k githubGPGKey) scraper.FetchedKey {
 	}
 
 	return scraper.FetchedKey{
-		KeyID:        k.KeyID,
+		// The numeric id is what the GitHub API expects to address the key, not the GPG key id.
+		KeyID:        strconv.Itoa(k.ID),
 		KeyType:      scraper.KeyTypeGPG,
 		KeyData:      []byte(k.RawKey),
 		Fingerprint:  fingerprint,
@@ -282,33 +309,13 @@ func (f *Fetcher) waitForRateLimit(ctx context.Context) error {
 
 // parseSSHKey parses an SSH public key string.
 func parseSSHKey(keyStr string) scraper.FetchedKey {
-	parts := strings.Fields(keyStr)
-	if len(parts) < 2 {
-		return scraper.FetchedKey{
-			KeyData: []byte(keyStr),
-		}
-	}
-
-	algorithm := parts[0]
-	keyData := parts[1]
-	comment := ""
-	if len(parts) > 2 {
-		comment = strings.Join(parts[2:], " ")
-	}
-
-	// Decode base64 to calculate fingerprint
-	decoded, err := base64.StdEncoding.DecodeString(keyData)
-	fingerprint := ""
-	if err == nil {
-		hash := sha256.Sum256(decoded)
-		fingerprint = "SHA256:" + base64.RawStdEncoding.EncodeToString(hash[:])
-	}
+	parsed := sshparse.Parse(keyStr)
 
 	return scraper.FetchedKey{
 		KeyData:     []byte(keyStr),
-		Fingerprint: fingerprint,
-		Algorithm:   algorithm,
-		Comment:     comment,
+		Fingerprint: parsed.Fingerprint,
+		Algorithm:   parsed.Algorithm,
+		Comment:     parsed.Comment,
 	}
 }
 

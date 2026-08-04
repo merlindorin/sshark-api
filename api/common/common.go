@@ -39,6 +39,86 @@ func InternalError(c *gin.Context) *api.APIError {
 	))
 }
 
+func UnauthorizedError(c *gin.Context) *api.APIError {
+	return api.NewAPIError(c, http.StatusUnauthorized, api.NewDetailedError(
+		c,
+		"UNAUTHORIZED",
+		"Unauthorized",
+		"This endpoint requires a signed-in user.",
+		"Sign in and try again.",
+	))
+}
+
+func KeyNotFoundError(c *gin.Context) *api.APIError {
+	return api.NewAPIError(c, http.StatusNotFound, api.NewDetailedError(
+		c,
+		"KEY_NOT_FOUND",
+		"Key not found",
+		"This key does not exist, or it is not published under an account you have connected.",
+		"Refresh your keys, then try again.",
+	))
+}
+
+func ProviderNotConnectedError(c *gin.Context, provider string) *api.APIError {
+	return api.NewAPIError(c, http.StatusForbidden, api.NewDetailedError(
+		c,
+		"PROVIDER_NOT_CONNECTED",
+		"Provider account not connected",
+		fmt.Sprintf("No %s account is connected to your sshark account.", provider),
+		fmt.Sprintf("Connect your %s account, then try again.", provider),
+	))
+}
+
+func ProviderForbiddenError(c *gin.Context, provider string, scope string) *api.APIError {
+	return api.NewAPIError(c, http.StatusForbidden, api.NewDetailedError(
+		c,
+		"PROVIDER_FORBIDDEN",
+		"Provider refused the operation",
+		fmt.Sprintf("%s did not allow sshark to manage your keys on your behalf.", provider),
+		fmt.Sprintf("Reconnect your %s account and grant the `%s` permission.", provider, scope),
+	))
+}
+
+func ProviderUnavailableError(c *gin.Context, provider string) *api.APIError {
+	return api.NewAPIError(c, http.StatusBadGateway, api.NewDetailedError(
+		c,
+		"PROVIDER_UNAVAILABLE",
+		"Provider unavailable",
+		fmt.Sprintf("sshark could not reach %s. Your keys were left untouched.", provider),
+		"Try again in a few moments.",
+	))
+}
+
+func InvalidUsernameError(c *gin.Context, details string) *api.APIError {
+	return api.NewAPIError(c, http.StatusBadRequest, api.NewDetailedError(
+		c,
+		"INVALID_USERNAME",
+		"Not a valid username",
+		details,
+		"Use 3 to 39 letters, digits, dashes or underscores.",
+	))
+}
+
+func UsernameTakenError(c *gin.Context, username string) *api.APIError {
+	return api.NewAPIError(c, http.StatusConflict, api.NewDetailedError(
+		c,
+		"USERNAME_TAKEN",
+		"Username already taken",
+		fmt.Sprintf("Someone else already holds %q.", username),
+		"Pick a different username.",
+	))
+}
+
+func ProfileNotFoundError(c *gin.Context) *api.APIError {
+	return api.NewAPIError(c, http.StatusNotFound, api.NewDetailedError(
+		c,
+		"PROFILE_NOT_FOUND",
+		"Profile not found",
+		"No SShark account holds this username.",
+		"Check the spelling, or search for the name instead.",
+	))
+}
+
 func InvalidSearchQueryError(c *gin.Context, err error, q string, examples []string) *api.APIError {
 	return api.NewAPIError(c, http.StatusBadRequest, api.NewDetailedError(
 		c,

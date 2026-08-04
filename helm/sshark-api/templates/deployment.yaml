@@ -119,6 +119,31 @@ spec:
                   key: clerk-token
                   {{- end }}
             {{- end }}
+            {{/* The API refreshes a signed-in user's keys on demand, so it calls the same
+                 provider APIs as the scraper and benefits from the same tokens. */}}
+            {{- if .Values.scraper.existingSecret }}
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.scraper.existingSecret }}
+                  key: {{ .Values.scraper.existingSecretGithubKey }}
+                  optional: true
+            - name: GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.scraper.existingSecret }}
+                  key: {{ .Values.scraper.existingSecretGitlabKey }}
+                  optional: true
+            {{- else }}
+            {{- if .Values.scraper.githubToken }}
+            - name: GITHUB_TOKEN
+              value: {{ .Values.scraper.githubToken | quote }}
+            {{- end }}
+            {{- if .Values.scraper.gitlabToken }}
+            - name: GITLAB_TOKEN
+              value: {{ .Values.scraper.gitlabToken | quote }}
+            {{- end }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}

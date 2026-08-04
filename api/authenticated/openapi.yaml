@@ -43,6 +43,230 @@ paths:
               schema:
                 $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
 
+  /me/username:
+    put:
+      tags:
+        - Profile
+      summary: Claim or change your username
+      description: |
+        Set the username your public profile is served from. Usernames are unique regardless
+        of case, and names matching an SShark route are reserved.
+      operationId: setMyUsername
+      security:
+        - ClerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetUsernameRequest'
+      responses:
+        '200':
+          description: The updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfile'
+        '400':
+          description: The username is not a valid format, or is reserved
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: Someone else already holds this username
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/profile:
+    delete:
+      tags:
+        - Profile
+      summary: Release your SShark profile
+      description: |
+        Delete the profile and free the username. Call this before deleting the account
+        itself: SShark stores the profile, so removing the account elsewhere would otherwise
+        leave the username held by a profile nobody can reach.
+      operationId: deleteMyProfile
+      security:
+        - ClerkAuth: []
+      responses:
+        '204':
+          description: Profile released
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to release the profile
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/username/available:
+    get:
+      tags:
+        - Profile
+      summary: Check whether a username can be claimed
+      description: |
+        Report whether a username is free to claim. Your own current username reports as
+        available so re-submitting it is not an error.
+      operationId: checkUsernameAvailable
+      security:
+        - ClerkAuth: []
+      parameters:
+        - name: username
+          in: query
+          required: true
+          description: The username to check
+          schema:
+            type: string
+          example: merlindorin
+      responses:
+        '200':
+          description: Whether the username can be claimed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsernameAvailability'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/keys:
+    get:
+      tags:
+        - Keys
+      summary: List the authenticated user's public keys
+      description: |
+        List the SSH and GPG public keys sshark knows about for the provider accounts the
+        authenticated user has connected. Keys published under a connected account are
+        reported as verified, because the user proved ownership of that account by signing
+        in with it.
+      operationId: listMyKeys
+      security:
+        - ClerkAuth: []
+      responses:
+        '200':
+          description: The authenticated user's keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyKeysResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to list keys
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/keys/refresh:
+    post:
+      tags:
+        - Keys
+      summary: Refresh the authenticated user's public keys
+      description: |
+        Fetch the current keys of every connected provider account and reconcile them with
+        what sshark stores, then return the up-to-date list. Keys added at the provider since
+        the last crawl appear, and keys removed there disappear.
+      operationId: refreshMyKeys
+      security:
+        - ClerkAuth: []
+      responses:
+        '200':
+          description: The authenticated user's keys, after refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyKeysResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to refresh keys
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/keys/{id}:
+    delete:
+      tags:
+        - Keys
+      summary: Revoke a public key
+      description: |
+        Delete the key at the provider it was published on, then drop it from sshark. Only
+        keys belonging to a connected provider account can be revoked, and the delegated
+        OAuth grant must carry the scope the provider requires to manage keys.
+      operationId: revokeMyKey
+      security:
+        - ClerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Public key ID
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '204':
+          description: Key revoked at the provider and removed from sshark
+        '400':
+          description: Invalid key ID format
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: The provider refused the deletion, usually a missing OAuth scope
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: Key not found, or not owned by a connected provider account
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to revoke the key
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
   /me/apikeys:
     get:
       tags:
@@ -183,8 +407,12 @@ components:
           example: Doe
         username:
           type: string
-          description: Username
+          description: The SShark username this account's public profile is served from
           example: johndoe
+        profile_url:
+          type: string
+          description: Path of the public profile
+          example: /@johndoe
         image_url:
           type: string
           format: uri
@@ -195,6 +423,238 @@ components:
           format: int64
           description: Unix timestamp of user creation
           example: 1705449600
+
+    MyProfile:
+      type: object
+      description: The signed-in user's SShark account
+      required:
+        - username
+        - profile_url
+      properties:
+        username:
+          type: string
+          description: The username the public profile is served from
+          example: merlindorin
+        profile_url:
+          type: string
+          description: Path of the public profile
+          example: /@merlindorin
+
+    SetUsernameRequest:
+      type: object
+      required:
+        - username
+      properties:
+        username:
+          type: string
+          description: The username to claim
+          minLength: 3
+          maxLength: 39
+          example: merlindorin
+
+    UsernameAvailability:
+      type: object
+      required:
+        - username
+        - available
+      properties:
+        username:
+          type: string
+          description: The username that was checked
+          example: merlindorin
+        available:
+          type: boolean
+          description: Whether the username can be claimed
+          example: false
+        reason:
+          type: string
+          description: Why the username cannot be claimed
+          example: Someone else already holds this username
+
+    ConnectedAccount:
+      type: object
+      description: A provider account the authenticated user has proven they own
+      required:
+        - provider
+        - username
+        - can_revoke
+      properties:
+        provider:
+          type: string
+          description: Provider name
+          example: github
+        username:
+          type: string
+          description: Login at the provider
+          example: merlindorin
+        uri:
+          type: string
+          format: uri
+          description: Profile URL at the provider
+          example: https://github.com/merlindorin
+        can_revoke:
+          type: boolean
+          description: |
+            Whether sshark holds a delegated credential able to delete keys at the provider.
+            When false, missing_scopes explains what the grant lacks.
+          example: true
+        missing_scopes:
+          type: array
+          items:
+            type: string
+          description: OAuth scopes the grant is missing to manage keys
+          example: ["admin:public_key"]
+
+    MySSHKey:
+      type: object
+      description: An SSH public key attributed to the authenticated user
+      required:
+        - id
+        - fingerprint
+        - key_data
+        - verified
+        - revocable
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the public key
+        fingerprint:
+          type: string
+          description: Key fingerprint
+          example: "SHA256:abcdef1234567890"
+        key_data:
+          type: string
+          description: Raw key data (base64 encoded)
+        algorithm:
+          type: string
+          description: SSH key algorithm
+          example: ssh-ed25519
+        comment:
+          type: string
+          description: Comment from the SSH key
+          example: user@hostname
+        key_bits:
+          type: integer
+          description: Key size in bits
+          example: 256
+        verified:
+          type: boolean
+          description: |
+            Whether the key belongs to a provider account the user proved they own by
+            signing in with it.
+          example: true
+        revocable:
+          type: boolean
+          description: Whether this key can be revoked through sshark
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        source:
+          $ref: '../common/openapi.yaml#/components/schemas/Source'
+
+    MyGPGKey:
+      type: object
+      description: A GPG public key attributed to the authenticated user
+      required:
+        - id
+        - fingerprint
+        - key_data
+        - verified
+        - revocable
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the public key
+        fingerprint:
+          type: string
+          description: Key fingerprint
+          example: "SHA256:abcdef1234567890"
+        key_data:
+          type: string
+          description: Raw key data (base64 encoded)
+        algorithm:
+          type: string
+          description: GPG key algorithm
+          example: RSA
+        key_bits:
+          type: integer
+          description: Key size in bits
+          example: 4096
+        expires_at:
+          type: string
+          format: date-time
+          description: Key expiration date
+        user_ids:
+          type: array
+          items:
+            type: string
+          description: GPG user IDs (usually email addresses)
+          example: ["user@example.com"]
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Key capabilities
+          example: ["sign", "certify"]
+        verified:
+          type: boolean
+          description: |
+            Whether the key belongs to a provider account the user proved they own by
+            signing in with it.
+          example: true
+        revocable:
+          type: boolean
+          description: Whether this key can be revoked through sshark
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        source:
+          $ref: '../common/openapi.yaml#/components/schemas/Source'
+
+    MyKeysResponse:
+      type: object
+      required:
+        - accounts
+        - ssh_keys
+        - gpg_keys
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectedAccount'
+          description: Provider accounts the user has connected
+        ssh_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/MySSHKey'
+          description: SSH keys attributed to the user
+        gpg_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyGPGKey'
+          description: GPG keys attributed to the user
+        refreshed_at:
+          type: string
+          format: date-time
+          description: When the keys were last pulled from the providers, set by a refresh
 
     ApiKey:
       type: object

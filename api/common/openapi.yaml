@@ -267,6 +267,14 @@ components:
                 - INVALID_QUERY_PARAM
                 - INVALID_SEARCH_QUERY
                 - INTERNAL_ERROR
+                - UNAUTHORIZED
+                - KEY_NOT_FOUND
+                - PROVIDER_NOT_CONNECTED
+                - PROVIDER_FORBIDDEN
+                - PROVIDER_UNAVAILABLE
+                - INVALID_USERNAME
+                - USERNAME_TAKEN
+                - PROFILE_NOT_FOUND
               example: INVALID_SEARCH_QUERY
             message:
               type: string

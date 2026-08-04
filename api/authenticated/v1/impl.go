@@ -9,11 +9,14 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2/apikey"
 	"github.com/gin-gonic/gin"
 	"github.com/merlindorin/sshark-api/api/authenticated"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.uber.org/zap"
 )
 
 type Server struct {
-	logger *zap.Logger
+	logger          *zap.Logger
+	keyServices     KeyServices
+	profileServices ProfileServices
 }
 
 //nolint:revive // method name from generated interface
@@ -150,12 +153,38 @@ func (s Server) DeleteApiKey(c *gin.Context, id string) {
 	c.Status(http.StatusNoContent)
 }
 
-func NewServer(logger *zap.Logger) *Server {
+func NewServer(logger *zap.Logger, keyServices KeyServices, profileServices ProfileServices) *Server {
 	return &Server{
-		logger: logger,
+		logger:          logger,
+		keyServices:     keyServices,
+		profileServices: profileServices,
 	}
 }
 
+func (s Server) DeleteMyProfile(c *gin.Context) {
+	DeleteMyProfile(c, s.logger, s.profileServices)
+}
+
+func (s Server) SetMyUsername(c *gin.Context) {
+	SetMyUsername(c, s.logger, s.profileServices)
+}
+
+func (s Server) CheckUsernameAvailable(c *gin.Context, params authenticated.CheckUsernameAvailableParams) {
+	CheckUsernameAvailable(c, s.logger, s.profileServices, params)
+}
+
 func (s Server) GetMe(c *gin.Context) {
-	Me(c, s.logger)
+	Me(c, s.logger, s.profileServices)
+}
+
+func (s Server) ListMyKeys(c *gin.Context) {
+	ListMyKeys(c, s.logger, s.keyServices)
+}
+
+func (s Server) RefreshMyKeys(c *gin.Context) {
+	RefreshMyKeys(c, s.logger, s.keyServices)
+}
+
+func (s Server) RevokeMyKey(c *gin.Context, id openapi_types.UUID) {
+	RevokeMyKey(c, s.logger, s.keyServices, id)
 }

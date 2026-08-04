@@ -15,11 +15,13 @@ type UserResponse struct {
 	FirstName *string `json:"first_name,omitempty"`
 	LastName  *string `json:"last_name,omitempty"`
 	Username  *string `json:"username,omitempty"`
-	ImageURL  *string `json:"image_url,omitempty"`
-	CreatedAt int64   `json:"created_at"`
+	// ProfileURL is the path of the public page this account is served from.
+	ProfileURL string  `json:"profile_url"`
+	ImageURL   *string `json:"image_url,omitempty"`
+	CreatedAt  int64   `json:"created_at"`
 }
 
-func Me(c *gin.Context, logger *zap.Logger) {
+func Me(c *gin.Context, logger *zap.Logger, services ProfileServices) {
 	ctx := c.Request.Context()
 
 	claims, ok := clerk.SessionClaimsFromContext(ctx)
@@ -36,6 +38,15 @@ func Me(c *gin.Context, logger *zap.Logger) {
 		return
 	}
 
+	// First visit is where the sshark profile comes into being, defaulting to the login of the
+	// first connected account. Everything downstream can then assume a username exists.
+	profile, err := services.ensureProfile(ctx, logger, claims.Subject)
+	if err != nil {
+		logger.Error("failed to ensure profile", zap.Error(err))
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to load profile"})
+		return
+	}
+
 	var primaryEmail *string
 	for _, email := range usr.EmailAddresses {
 		if email.ID == *usr.PrimaryEmailAddressID {
@@ -49,8 +60,10 @@ func Me(c *gin.Context, logger *zap.Logger) {
 		Email:     primaryEmail,
 		FirstName: usr.FirstName,
 		LastName:  usr.LastName,
-		Username:  usr.Username,
-		ImageURL:  usr.ImageURL,
-		CreatedAt: usr.CreatedAt,
+		// The sshark username, not Clerk's: it is what /@username resolves on.
+		Username:   &profile.Username,
+		ProfileURL: "/@" + profile.Username,
+		ImageURL:   usr.ImageURL,
+		CreatedAt:  usr.CreatedAt,
 	})
 }

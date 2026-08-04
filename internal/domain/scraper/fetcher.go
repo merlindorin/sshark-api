@@ -61,6 +61,10 @@ type Fetcher interface {
 	// Pass empty cursor to start from the beginning.
 	ListUsers(ctx context.Context, cursor string, limit int) (*UsersPage, error)
 
+	// FetchUser fetches a single user by username, without their keys.
+	// Returns ErrUserNotFound when the provider does not know the username.
+	FetchUser(ctx context.Context, username string) (*FetchedUser, error)
+
 	// FetchUserKeys fetches SSH keys for a specific user.
 	FetchUserKeys(ctx context.Context, user *FetchedUser) error
 

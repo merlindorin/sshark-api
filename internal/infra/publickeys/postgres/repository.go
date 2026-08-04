@@ -23,7 +23,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*publickeys.Entity, error) {
 	var entity publickeys.Entity
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, source_id, key_type, key_data, fingerprint, created_at, updated_at
+		SELECT id, source_id, key_type, key_data, provider_key_id, fingerprint, created_at, updated_at
 		FROM public_keys
 		WHERE id = $1
 	`, id).Scan(
@@ -31,6 +31,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*publickeys.Entity,
 		&entity.SourceID,
 		&entity.KeyType,
 		&entity.KeyData,
+		&entity.ProviderKeyID,
 		&entity.Fingerprint,
 		&entity.CreatedAt,
 		&entity.UpdatedAt,
@@ -53,7 +54,7 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*publickeys.Entity,
 func (r *Repository) GetByFingerprint(ctx context.Context, fingerprint string) (*publickeys.Entity, error) {
 	var entity publickeys.Entity
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, source_id, key_type, key_data, fingerprint, created_at, updated_at
+		SELECT id, source_id, key_type, key_data, provider_key_id, fingerprint, created_at, updated_at
 		FROM public_keys
 		WHERE fingerprint = $1
 	`, fingerprint).Scan(
@@ -61,6 +62,7 @@ func (r *Repository) GetByFingerprint(ctx context.Context, fingerprint string) (
 		&entity.SourceID,
 		&entity.KeyType,
 		&entity.KeyData,
+		&entity.ProviderKeyID,
 		&entity.Fingerprint,
 		&entity.CreatedAt,
 		&entity.UpdatedAt,
@@ -98,7 +100,7 @@ func (r *Repository) Search(
 	// Build main query with pagination
 	argIndex := len(args) + 1
 	query := `
-		SELECT pk.id, pk.source_id, pk.key_type, pk.key_data, pk.fingerprint,
+		SELECT pk.id, pk.source_id, pk.key_type, pk.key_data, pk.provider_key_id, pk.fingerprint,
 		       pk.created_at, pk.updated_at
 		FROM public_keys pk` + whereClause
 	query += ` ORDER BY pk.created_at DESC LIMIT $` + strconv.Itoa(argIndex)
@@ -155,6 +157,7 @@ func (r *Repository) scanPublicKeys(ctx context.Context, rows pgx.Rows) ([]publi
 			&entity.SourceID,
 			&entity.KeyType,
 			&entity.KeyData,
+			&entity.ProviderKeyID,
 			&entity.Fingerprint,
 			&entity.CreatedAt,
 			&entity.UpdatedAt,
@@ -194,7 +197,7 @@ func (r *Repository) SearchWithQuery(
 
 	argIndex := len(args) + 1
 	selectQuery := `
-		SELECT pk.id, pk.source_id, pk.key_type, pk.key_data, pk.fingerprint,
+		SELECT pk.id, pk.source_id, pk.key_type, pk.key_data, pk.provider_key_id, pk.fingerprint,
 		       pk.created_at, pk.updated_at
 		FROM ` + baseFrom + fullWhere
 	selectQuery += ` ORDER BY pk.created_at DESC LIMIT $` + strconv.Itoa(argIndex)
@@ -244,9 +247,9 @@ func (r *Repository) Create(ctx context.Context, entity *publickeys.Entity) erro
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO public_keys (id, source_id, key_type, key_data, fingerprint)
-		VALUES ($1, $2, $3, $4, $5)
-	`, entity.ID, entity.SourceID, entity.KeyType, entity.KeyData, entity.Fingerprint)
+		INSERT INTO public_keys (id, source_id, key_type, key_data, provider_key_id, fingerprint)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, entity.ID, entity.SourceID, entity.KeyType, entity.KeyData, entity.ProviderKeyID, entity.Fingerprint)
 	if err != nil {
 		return err
 	}
@@ -273,9 +276,9 @@ func (r *Repository) CreateBatch(ctx context.Context, entities []publickeys.Enti
 		}
 
 		_, err = tx.Exec(ctx, `
-			INSERT INTO public_keys (id, source_id, key_type, key_data, fingerprint)
-			VALUES ($1, $2, $3, $4, $5)
-		`, entity.ID, entity.SourceID, entity.KeyType, entity.KeyData, entity.Fingerprint)
+			INSERT INTO public_keys (id, source_id, key_type, key_data, provider_key_id, fingerprint)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, entity.ID, entity.SourceID, entity.KeyType, entity.KeyData, entity.ProviderKeyID, entity.Fingerprint)
 		if err != nil {
 			return err
 		}
@@ -298,9 +301,9 @@ func (r *Repository) Update(ctx context.Context, entity *publickeys.Entity) erro
 
 	result, err := tx.Exec(ctx, `
 		UPDATE public_keys
-		SET key_data = $2, fingerprint = $3, updated_at = NOW()
+		SET key_data = $2, fingerprint = $3, provider_key_id = COALESCE($4, provider_key_id), updated_at = NOW()
 		WHERE id = $1
-	`, entity.ID, entity.KeyData, entity.Fingerprint)
+	`, entity.ID, entity.KeyData, entity.Fingerprint, entity.ProviderKeyID)
 	if err != nil {
 		return err
 	}

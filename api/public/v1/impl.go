@@ -6,14 +6,18 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/merlindorin/sshark-api/api/public"
+	"github.com/merlindorin/sshark-api/internal/domain/profiles"
 	"github.com/merlindorin/sshark-api/internal/domain/publickeys"
 	"github.com/merlindorin/sshark-api/internal/domain/sources"
+	"github.com/merlindorin/sshark-api/internal/infra/identity"
 )
 
 type Server struct {
 	logger         *zap.Logger
 	sourcesRepo    sources.Repository
 	publickeysRepo publickeys.Repository
+	profilesRepo   profiles.Repository
+	identities     *identity.Resolver
 }
 
 //nolint:revive // method name from generated interface
@@ -45,10 +49,22 @@ func (s Server) ListSources(c *gin.Context, params public.ListSourcesParams) {
 	ListSources(c, s.logger, s.sourcesRepo, params)
 }
 
-func NewServer(logger *zap.Logger, sourcesRepo sources.Repository, publickeysRepo publickeys.Repository) *Server {
+func (s Server) GetUserProfile(c *gin.Context, username string) {
+	GetUserProfile(c, s.logger, s.profilesRepo, s.identities, s.sourcesRepo, s.publickeysRepo, username)
+}
+
+func NewServer(
+	logger *zap.Logger,
+	sourcesRepo sources.Repository,
+	publickeysRepo publickeys.Repository,
+	profilesRepo profiles.Repository,
+	identities *identity.Resolver,
+) *Server {
 	return &Server{
 		logger:         logger,
 		sourcesRepo:    sourcesRepo,
 		publickeysRepo: publickeysRepo,
+		profilesRepo:   profilesRepo,
+		identities:     identities,
 	}
 }

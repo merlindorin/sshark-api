@@ -110,7 +110,7 @@ func (s *Service) Run(ctx context.Context) error {
 		// Process each user
 		for i := range page.Users {
 			user := &page.Users[i]
-			s.processUser(ctx, user)
+			_ = s.processUser(ctx, user)
 		}
 
 		// Save progress
@@ -129,17 +129,70 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 }
 
-func (s *Service) processUser(ctx context.Context, user *scraper.FetchedUser) {
+// ScrapeUser scrapes keys for a single user from the provider this service is bound to.
+// It is the on-demand counterpart of Run: it refreshes one account immediately, picking up
+// keys added since the last crawl and dropping keys removed upstream.
+func (s *Service) ScrapeUser(
+	ctx context.Context,
+	provider scraper.Provider,
+	username string,
+) (*scraper.ScrapeResult, error) {
+	if provider != s.fetcher.Provider() {
+		return nil, fmt.Errorf("%w: %s", scraper.ErrProviderUnavailable, provider)
+	}
+
+	user, err := s.fetcher.FetchUser(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+
+	result := s.processUser(ctx, user)
+
+	return &result, nil
+}
+
+// ScrapeUsers scrapes keys for multiple users from the provider this service is bound to.
+func (s *Service) ScrapeUsers(
+	ctx context.Context,
+	provider scraper.Provider,
+	usernames []string,
+) ([]scraper.ScrapeResult, error) {
+	results := make([]scraper.ScrapeResult, 0, len(usernames))
+
+	for _, username := range usernames {
+		result, err := s.ScrapeUser(ctx, provider, username)
+		if err != nil {
+			results = append(results, scraper.ScrapeResult{
+				Provider: provider,
+				Username: username,
+				Error:    err,
+			})
+			continue
+		}
+		results = append(results, *result)
+	}
+
+	return results, nil
+}
+
+func (s *Service) processUser(ctx context.Context, user *scraper.FetchedUser) scraper.ScrapeResult {
+	result := scraper.ScrapeResult{
+		Provider: s.fetcher.Provider(),
+		Username: user.Username,
+	}
+
 	// Fetch SSH keys for the user
 	if err := s.fetcher.FetchUserKeys(ctx, user); err != nil {
 		if errors.Is(err, scraper.ErrRateLimited) {
 			s.logger.Warn("rate limited fetching SSH keys", zap.String("username", user.Username))
-			return
+			result.Error = err
+			return result
 		}
 		s.logger.Warn("failed to fetch SSH keys",
 			zap.String("username", user.Username),
 			zap.Error(err),
 		)
+		result.Error = err
 	}
 
 	// Fetch GPG keys for the user
@@ -157,7 +210,7 @@ func (s *Service) processUser(ctx context.Context, user *scraper.FetchedUser) {
 
 	// Skip users with no keys at all
 	if len(user.Keys) == 0 && len(user.GPGKeys) == 0 {
-		return
+		return result
 	}
 
 	// Get or create source
@@ -167,18 +220,21 @@ func (s *Service) processUser(ctx context.Context, user *scraper.FetchedUser) {
 			zap.String("username", user.Username),
 			zap.Error(err),
 		)
-		return
+		result.Error = err
+		return result
 	}
 
 	// Sync SSH keys
 	if len(user.Keys) > 0 {
-		s.syncKeys(ctx, source.ID, user.Keys, publickeys.KeyTypeSSH)
+		s.syncKeys(ctx, source.ID, user.Keys, publickeys.KeyTypeSSH, &result)
 	}
 
 	// Sync GPG keys
 	if len(user.GPGKeys) > 0 {
-		s.syncKeys(ctx, source.ID, user.GPGKeys, publickeys.KeyTypeGPG)
+		s.syncKeys(ctx, source.ID, user.GPGKeys, publickeys.KeyTypeGPG, &result)
 	}
+
+	return result
 }
 
 func (s *Service) getOrCreateSource(
@@ -230,6 +286,7 @@ func (s *Service) syncKeys(
 	sourceID uuid.UUID,
 	fetchedKeys []scraper.FetchedKey,
 	keyType publickeys.KeyType,
+	result *scraper.ScrapeResult,
 ) {
 	// Get existing keys for this source and type
 	existingKeys, err := s.publickeysRepo.Search(ctx, publickeys.SearchFilter{
@@ -260,9 +317,11 @@ func (s *Service) syncKeys(
 
 		existing, exists := existingByFingerprint[fetchedKey.Fingerprint]
 		if exists {
-			s.updateExistingKey(ctx, existing, fetchedKey, keyType)
-		} else {
-			s.createNewKey(ctx, sourceID, fetchedKey, keyType)
+			if s.updateExistingKey(ctx, existing, fetchedKey, keyType) {
+				result.KeysUpdated++
+			}
+		} else if s.createNewKey(ctx, sourceID, fetchedKey, keyType) {
+			result.KeysAdded++
 		}
 	}
 
@@ -273,22 +332,27 @@ func (s *Service) syncKeys(
 		}
 		if deleteErr := s.publickeysRepo.Delete(ctx, existing.ID); deleteErr != nil {
 			s.logger.Warn("failed to delete stale key", zap.Error(deleteErr))
+			continue
 		}
+		result.KeysRemoved++
 	}
 }
 
+// updateExistingKey refreshes a stored key from the provider payload.
+// It reports whether the stored key actually changed.
 func (s *Service) updateExistingKey(
 	ctx context.Context,
 	existing *publickeys.Entity,
 	fetchedKey scraper.FetchedKey,
 	keyType publickeys.KeyType,
-) {
+) bool {
 	if !s.keyNeedsUpdate(existing, &fetchedKey, keyType) {
 		s.recordScrapeHistory(ctx, existing.ID, true, false)
-		return
+		return false
 	}
 
 	existing.KeyData = fetchedKey.KeyData
+	existing.ProviderKeyID = providerKeyID(fetchedKey)
 
 	switch keyType {
 	case publickeys.KeyTypeSSH:
@@ -309,24 +373,29 @@ func (s *Service) updateExistingKey(
 
 	if updateErr := s.publickeysRepo.Update(ctx, existing); updateErr != nil {
 		s.logger.Warn("failed to update key", zap.Error(updateErr))
-		return
+		return false
 	}
 
 	s.recordScrapeHistory(ctx, existing.ID, true, true)
+
+	return true
 }
 
+// createNewKey stores a key discovered on the provider.
+// It reports whether the key was persisted.
 func (s *Service) createNewKey(
 	ctx context.Context,
 	sourceID uuid.UUID,
 	fetchedKey scraper.FetchedKey,
 	keyType publickeys.KeyType,
-) {
+) bool {
 	newKey := &publickeys.Entity{
-		ID:          uuid.New(),
-		SourceID:    sourceID,
-		KeyType:     keyType,
-		KeyData:     fetchedKey.KeyData,
-		Fingerprint: fetchedKey.Fingerprint,
+		ID:            uuid.New(),
+		SourceID:      sourceID,
+		KeyType:       keyType,
+		KeyData:       fetchedKey.KeyData,
+		ProviderKeyID: providerKeyID(fetchedKey),
+		Fingerprint:   fetchedKey.Fingerprint,
 	}
 
 	switch keyType {
@@ -348,10 +417,20 @@ func (s *Service) createNewKey(
 
 	if createErr := s.publickeysRepo.Create(ctx, newKey); createErr != nil {
 		s.logger.Warn("failed to create key", zap.Error(createErr))
-		return
+		return false
 	}
 
 	s.recordScrapeHistory(ctx, newKey.ID, true, true)
+
+	return true
+}
+
+func providerKeyID(fetchedKey scraper.FetchedKey) *string {
+	if fetchedKey.KeyID == "" {
+		return nil
+	}
+
+	return &fetchedKey.KeyID
 }
 
 func (s *Service) keyNeedsUpdate(

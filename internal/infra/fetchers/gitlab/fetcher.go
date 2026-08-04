@@ -132,6 +132,37 @@ func (f *Fetcher) ListUsers(ctx context.Context, cursor string, limit int) (*scr
 	return page, nil
 }
 
+// FetchUser fetches a single GitLab user by username, without their keys.
+func (f *Fetcher) FetchUser(ctx context.Context, username string) (*scraper.FetchedUser, error) {
+	if err := f.waitForRateLimit(ctx); err != nil {
+		return nil, err
+	}
+
+	var users []gitlabUser
+
+	err := f.httpClient.Do(
+		ctx,
+		do.WithMethod(http.MethodGet),
+		do.WithPath("/users"),
+		do.WithQuery("username", username),
+		do.WithUnmarshalBody(&users))
+	if err != nil {
+		return nil, fmt.Errorf("cannot fetch user %s: %w", username, err)
+	}
+
+	if len(users) == 0 {
+		return nil, scraper.ErrUserNotFound
+	}
+
+	u := users[0]
+
+	return &scraper.FetchedUser{
+		UserID:   strconv.Itoa(u.ID),
+		Username: u.Username,
+		URI:      u.WebURL,
+	}, nil
+}
+
 // FetchUserKeys fetches SSH keys for a user and populates the Keys field.
 func (f *Fetcher) FetchUserKeys(ctx context.Context, user *scraper.FetchedUser) error {
 	if err := f.waitForRateLimit(ctx); err != nil {
