@@ -17,6 +17,7 @@ import (
 	scraperservice "github.com/merlindorin/sshark-api/internal/infra/scraper"
 	scraperpostgres "github.com/merlindorin/sshark-api/internal/infra/scraper/postgres"
 	sourcespostgres "github.com/merlindorin/sshark-api/internal/infra/sources/postgres"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 )
 
 type Scrape struct {
@@ -43,12 +44,23 @@ func process(
 		zap.Duration("delay", delay),
 	)
 
+	// Initialize metrics
+	m, err := metrics.New()
+	if err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
+	}
+
 	// Connect to PostgreSQL
 	pool, err := postgres.Pool(ctx)
 	if err != nil {
 		return fmt.Errorf("connecting to postgres: %w", err)
 	}
 	defer pool.Close()
+
+	// Start database stats collector
+	dbStatsCollector := metrics.NewDBStatsCollector(pool, m, logger, 10*time.Second)
+	go dbStatsCollector.Start(ctx)
+	defer dbStatsCollector.Stop()
 
 	// Create repositories
 	sourcesRepo := sourcespostgres.NewRepository(pool)

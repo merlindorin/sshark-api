@@ -45,6 +45,7 @@ import (
 	scraperrepo "github.com/merlindorin/sshark-api/internal/infra/scraper/postgres"
 	sourcesrepo "github.com/merlindorin/sshark-api/internal/infra/sources/postgres"
 	tasksrepo "github.com/merlindorin/sshark-api/internal/infra/tasks/postgres"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 	"github.com/merlindorin/sshark-api/internal/middleware"
 	"github.com/merlindorin/sshark-api/internal/otel"
 )
@@ -70,6 +71,7 @@ func (s *Serve) buildScrapers(
 	sourcesRepo sources.Repository,
 	publickeysRepo publickeys.Repository,
 	progressRepo scraper.ProgressRepository,
+	m *metrics.Metrics,
 ) map[scraper.Provider]scraper.Service {
 	cfg := infrascraper.Config{}
 
@@ -129,6 +131,15 @@ func (s *Serve) Run(
 
 	gin.SetMode(getGinMode(development))
 
+	m, err := metrics.New()
+	if err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
+	}
+
+	dbStatsCollector := metrics.NewDBStatsCollector(pool, m, namedLogger, 10*time.Second)
+	go dbStatsCollector.Start(ctx)
+	defer dbStatsCollector.Stop()
+
 	sourcesRepo := sourcesrepo.NewRepository(pool)
 	tasksRepo := tasksrepo.NewRepository(pool)
 	publickeysRepo := publickeysrepo.NewRepository(pool)
@@ -142,6 +153,7 @@ func (s *Serve) Run(
 	router.Use(ginzap.Ginzap(namedLogger, time.RFC3339, true))
 	router.Use(ginzap.RecoveryWithZap(namedLogger, true))
 	router.Use(middleware.ErrorHandler(namedLogger))
+	router.Use(middleware.Metrics(m))
 
 	gotel.Mount(router)
 
@@ -152,14 +164,14 @@ func (s *Serve) Run(
 	apiPublic.RegisterHandlers(router.Group(apiPath), apiPublicV1Handler)
 
 	keyServices, profileServices, taskServices, queue, err := s.buildAuthenticatedServices(
-		namedLogger, pool, sourcesRepo, publickeysRepo, profilesRepo, tasksRepo, identities)
+		namedLogger, pool, sourcesRepo, publickeysRepo, profilesRepo, tasksRepo, identities, m)
 	if err != nil {
 		return err
 	}
 
 	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(
 		namedLogger, keyServices, profileServices, taskServices)
-	authenticated := router.Group(apiPath, middleware.RequireAuth(clerkConfigured))
+	authenticated := router.Group(apiPath, middleware.RequireAuth(clerkConfigured, m))
 	apiAuthenticated.RegisterHandlers(authenticated, apiAuthenticatedV1Handler)
 
 	errs, ctx := errgroup.WithContext(ctx)
@@ -187,6 +199,7 @@ func (s *Serve) buildAuthenticatedServices(
 	profilesRepo profiles.Repository,
 	tasksRepo tasks.Repository,
 	identities *identity.Resolver,
+	m *metrics.Metrics,
 ) (
 	apiAuthenticatedV1.KeyServices,
 	apiAuthenticatedV1.ProfileServices,
@@ -201,10 +214,10 @@ func (s *Serve) buildAuthenticatedServices(
 		PublicKeys: publickeysRepo,
 		Identities: identities,
 		Scrapers: s.buildScrapers(
-			logger, sourcesRepo, publickeysRepo, scraperrepo.NewProgressRepository(pool)),
+			logger, sourcesRepo, publickeysRepo, scraperrepo.NewProgressRepository(pool), m),
 	}
 
-	queue, err := jobs.NewQueue(logger, pool, tasksRepo, profilesRepo, keyOps)
+	queue, err := jobs.NewQueue(logger, pool, tasksRepo, profilesRepo, keyOps, m)
 	if err != nil {
 		return apiAuthenticatedV1.KeyServices{}, apiAuthenticatedV1.ProfileServices{},
 			apiAuthenticatedV1.TaskServices{}, nil, fmt.Errorf("failed to create the job queue: %w", err)

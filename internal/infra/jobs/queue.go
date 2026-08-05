@@ -15,6 +15,7 @@ import (
 	"github.com/merlindorin/sshark-api/internal/app/keyops"
 	"github.com/merlindorin/sshark-api/internal/domain/profiles"
 	"github.com/merlindorin/sshark-api/internal/domain/tasks"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 )
 
 // maxWorkers bounds concurrent jobs. The ceiling is the providers' rate limits, not this
@@ -36,11 +37,22 @@ func NewQueue(
 	taskRepository tasks.Repository,
 	profileRepository profiles.Repository,
 	keys *keyops.Service,
+	m *metrics.Metrics,
 ) (*Queue, error) {
 	workers := river.NewWorkers()
 
-	river.AddWorker(workers, &RefreshKeysWorker{Logger: logger, Keys: keys, Tasks: taskRepository})
-	river.AddWorker(workers, &RevokeKeyWorker{Logger: logger, Keys: keys, Tasks: taskRepository})
+	river.AddWorker(workers, &RefreshKeysWorker{
+		Logger:  logger,
+		Keys:    keys,
+		Tasks:   taskRepository,
+		Metrics: m,
+	})
+	river.AddWorker(workers, &RevokeKeyWorker{
+		Logger:  logger,
+		Keys:    keys,
+		Tasks:   taskRepository,
+		Metrics: m,
+	})
 
 	// The queue is what queues a refresh, and this worker is registered into the queue, so the
 	// two cannot both be built first. The worker is given the method once the queue exists.

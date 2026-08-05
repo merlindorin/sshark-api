@@ -10,13 +10,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/merlindorin/sshark-api/internal/app/keyops"
 	"github.com/merlindorin/sshark-api/internal/domain/tasks"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 )
 
 // RefreshKeysArgs refreshes every account a user has connected.
@@ -42,13 +46,14 @@ func (RevokeKeyArgs) Kind() string { return string(tasks.KindRevokeKey) }
 type RefreshKeysWorker struct {
 	river.WorkerDefaults[RefreshKeysArgs]
 
-	Logger *zap.Logger
-	Keys   *keyops.Service
-	Tasks  tasks.Repository
+	Logger  *zap.Logger
+	Keys    *keyops.Service
+	Tasks   tasks.Repository
+	Metrics *metrics.Metrics
 }
 
 func (w *RefreshKeysWorker) Work(ctx context.Context, job *river.Job[RefreshKeysArgs]) error {
-	return run(ctx, w.Logger, w.Tasks, job.Args.TaskID, func(report keyops.Reporter) (any, error) {
+	return run(ctx, w.Logger, w.Tasks, w.Metrics, job.Args.TaskID, string(tasks.KindRefreshKeys), job.ScheduledAt, func(report keyops.Reporter) (any, error) {
 		return w.Keys.Refresh(ctx, job.Args.ClerkUserID, report)
 	})
 }
@@ -57,13 +62,14 @@ func (w *RefreshKeysWorker) Work(ctx context.Context, job *river.Job[RefreshKeys
 type RevokeKeyWorker struct {
 	river.WorkerDefaults[RevokeKeyArgs]
 
-	Logger *zap.Logger
-	Keys   *keyops.Service
-	Tasks  tasks.Repository
+	Logger  *zap.Logger
+	Keys    *keyops.Service
+	Tasks   tasks.Repository
+	Metrics *metrics.Metrics
 }
 
 func (w *RevokeKeyWorker) Work(ctx context.Context, job *river.Job[RevokeKeyArgs]) error {
-	return run(ctx, w.Logger, w.Tasks, job.Args.TaskID, func(report keyops.Reporter) (any, error) {
+	return run(ctx, w.Logger, w.Tasks, w.Metrics, job.Args.TaskID, string(tasks.KindRevokeKey), job.ScheduledAt, func(report keyops.Reporter) (any, error) {
 		return w.Keys.Revoke(ctx, job.Args.ClerkUserID, job.Args.KeyID, report)
 	})
 }
@@ -77,9 +83,20 @@ func run(
 	ctx context.Context,
 	logger *zap.Logger,
 	repository tasks.Repository,
+	m *metrics.Metrics,
 	taskID uuid.UUID,
+	jobType string,
+	scheduledAt time.Time,
 	operation func(report keyops.Reporter) (any, error),
 ) error {
+	start := time.Now()
+
+	// Record job age (time from scheduled to start)
+	age := start.Sub(scheduledAt).Seconds()
+	m.JobAge.Record(ctx, age,
+		metric.WithAttributes(attribute.String("job_type", jobType)),
+	)
+
 	if err := repository.MarkRunning(ctx, taskID); err != nil {
 		return fmt.Errorf("cannot mark task running: %w", err)
 	}
@@ -96,6 +113,26 @@ func run(
 	})
 
 	result, opErr := operation(report)
+
+	// Record job processing time
+	duration := time.Since(start).Seconds()
+	m.JobProcessingTime.Record(ctx, duration,
+		metric.WithAttributes(attribute.String("job_type", jobType)),
+	)
+
+	// Record job completion or failure
+	if opErr == nil {
+		m.JobCompleted.Add(ctx, 1,
+			metric.WithAttributes(attribute.String("job_type", jobType)),
+		)
+	} else {
+		m.JobFailed.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("job_type", jobType),
+				attribute.String("error_category", "operation_error"),
+			),
+		)
+	}
 
 	var encoded json.RawMessage
 	if opErr == nil && result != nil {
