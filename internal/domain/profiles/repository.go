@@ -2,6 +2,8 @@ package profiles
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 // Repository stores the sshark profiles.
@@ -9,6 +11,11 @@ type Repository interface {
 	// GetByUsername returns the profile holding this username, matched case-insensitively.
 	// It returns ErrProfileNotFound when nobody holds it.
 	GetByUsername(ctx context.Context, username string) (*Entity, error)
+
+	// List returns profiles ordered by id, starting after the one given, or from the beginning
+	// for uuid.Nil. Walking by id rather than by offset keeps a long pass over every profile
+	// stable while profiles are being created and deleted underneath it.
+	List(ctx context.Context, after uuid.UUID, limit int) ([]Entity, error)
 
 	// GetByClerkUserID returns the profile of a signed-in user, or ErrProfileNotFound.
 	GetByClerkUserID(ctx context.Context, clerkUserID string) (*Entity, error)

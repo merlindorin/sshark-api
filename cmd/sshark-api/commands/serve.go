@@ -204,7 +204,7 @@ func (s *Serve) buildAuthenticatedServices(
 			logger, sourcesRepo, publickeysRepo, scraperrepo.NewProgressRepository(pool)),
 	}
 
-	queue, err := jobs.NewQueue(logger, pool, tasksRepo, keyOps)
+	queue, err := jobs.NewQueue(logger, pool, tasksRepo, profilesRepo, keyOps)
 	if err != nil {
 		return apiAuthenticatedV1.KeyServices{}, apiAuthenticatedV1.ProfileServices{},
 			apiAuthenticatedV1.TaskServices{}, nil, fmt.Errorf("failed to create the job queue: %w", err)

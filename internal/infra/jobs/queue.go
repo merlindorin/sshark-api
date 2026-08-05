@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/merlindorin/sshark-api/internal/app/keyops"
+	"github.com/merlindorin/sshark-api/internal/domain/profiles"
 	"github.com/merlindorin/sshark-api/internal/domain/tasks"
 )
 
@@ -33,6 +34,7 @@ func NewQueue(
 	logger *zap.Logger,
 	pool *pgxpool.Pool,
 	taskRepository tasks.Repository,
+	profileRepository profiles.Repository,
 	keys *keyops.Service,
 ) (*Queue, error) {
 	workers := river.NewWorkers()
@@ -40,15 +42,24 @@ func NewQueue(
 	river.AddWorker(workers, &RefreshKeysWorker{Logger: logger, Keys: keys, Tasks: taskRepository})
 	river.AddWorker(workers, &RevokeKeyWorker{Logger: logger, Keys: keys, Tasks: taskRepository})
 
+	// The queue is what queues a refresh, and this worker is registered into the queue, so the
+	// two cannot both be built first. The worker is given the method once the queue exists.
+	refreshAll := &RefreshAllWorker{Logger: logger, Profiles: profileRepository}
+	river.AddWorker(workers, refreshAll)
+
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}},
-		Workers: workers,
+		Queues:       map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}},
+		Workers:      workers,
+		PeriodicJobs: []*river.PeriodicJob{periodicRefresh()},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cannot create the job queue: %w", err)
 	}
 
-	return &Queue{client: client, tasks: taskRepository, logger: logger}, nil
+	queue := &Queue{client: client, tasks: taskRepository, logger: logger}
+	refreshAll.Enqueue = queue.EnqueueRefresh
+
+	return queue, nil
 }
 
 // Start begins processing jobs.

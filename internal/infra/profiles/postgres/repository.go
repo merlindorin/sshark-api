@@ -36,6 +36,34 @@ func (r *Repository) GetByClerkUserID(ctx context.Context, clerkUserID string) (
 	return r.getBy(ctx, `SELECT `+selectColumns+` FROM profiles WHERE clerk_user_id = $1`, clerkUserID)
 }
 
+func (r *Repository) List(ctx context.Context, after uuid.UUID, limit int) ([]profiles.Entity, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+selectColumns+` FROM profiles WHERE id > $1 ORDER BY id LIMIT $2`, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entities := make([]profiles.Entity, 0, limit)
+
+	for rows.Next() {
+		var entity profiles.Entity
+		if scanErr := rows.Scan(
+			&entity.ID,
+			&entity.ClerkUserID,
+			&entity.Username,
+			&entity.CreatedAt,
+			&entity.UpdatedAt,
+		); scanErr != nil {
+			return nil, scanErr
+		}
+
+		entities = append(entities, entity)
+	}
+
+	return entities, rows.Err()
+}
+
 func (r *Repository) getBy(ctx context.Context, query string, arg string) (*profiles.Entity, error) {
 	var entity profiles.Entity
 
