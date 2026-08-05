@@ -7,13 +7,15 @@ metadata:
     {{- include "sshark-api.labels" . | nindent 4 }}
     app.kubernetes.io/component: migration
   annotations:
-    {{- if .Values.cnpg.enabled }}
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "5"
-    {{- else }}
-    "helm.sh/hook": pre-install,pre-upgrade
+    # post-install, because on a first install the database does not exist until the chart has
+    # created it; pre-upgrade, because on an upgrade it already does and the new code may need
+    # schema the old code never had.
+    #
+    # Running migrations post-upgrade deadlocks: the new pods refuse to start without the schema,
+    # the deployment therefore never reports healthy, and a post-upgrade hook waits for health
+    # that will never come — so the migration that would have fixed it never runs.
+    "helm.sh/hook": post-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
-    {{- end }}
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   template:
