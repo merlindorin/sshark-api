@@ -78,11 +78,11 @@ func (s *Serve) buildScrapers(
 	return map[scraper.Provider]scraper.Service{
 		scraper.ProviderGitHub: infrascraper.NewService(
 			logger, github.NewFetcher(github.WithToken(s.GithubToken)),
-			sourcesRepo, publickeysRepo, progressRepo, cfg,
+			sourcesRepo, publickeysRepo, progressRepo, cfg, m,
 		),
 		scraper.ProviderGitLab: infrascraper.NewService(
 			logger, gitlab.NewFetcher(gitlab.WithToken(s.GitlabToken)),
-			sourcesRepo, publickeysRepo, progressRepo, cfg,
+			sourcesRepo, publickeysRepo, progressRepo, cfg, m,
 		),
 	}
 }
@@ -140,6 +140,10 @@ func (s *Serve) Run(
 	go dbStatsCollector.Start(ctx)
 	defer dbStatsCollector.Stop()
 
+	jobQueueStatsCollector := metrics.NewJobQueueStatsCollector(pool, m, namedLogger, 10*time.Second)
+	go jobQueueStatsCollector.Start(ctx)
+	defer jobQueueStatsCollector.Stop()
+
 	sourcesRepo := sourcesrepo.NewRepository(pool)
 	tasksRepo := tasksrepo.NewRepository(pool)
 	publickeysRepo := publickeysrepo.NewRepository(pool)
@@ -160,7 +164,7 @@ func (s *Serve) Run(
 	apiPrivateV1Handler := apiPrivateV1.NewServer(namedLogger)
 	apiPrivate.RegisterHandlers(router, apiPrivateV1Handler)
 
-	apiPublicV1Handler := apiPublicV1.NewServer(namedLogger, sourcesRepo, publickeysRepo, profilesRepo, identities)
+	apiPublicV1Handler := apiPublicV1.NewServer(namedLogger, sourcesRepo, publickeysRepo, profilesRepo, identities, m)
 	apiPublic.RegisterHandlers(router.Group(apiPath), apiPublicV1Handler)
 
 	keyServices, profileServices, taskServices, queue, err := s.buildAuthenticatedServices(
@@ -170,7 +174,7 @@ func (s *Serve) Run(
 	}
 
 	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(
-		namedLogger, keyServices, profileServices, taskServices)
+		namedLogger, keyServices, profileServices, taskServices, m)
 	authenticated := router.Group(apiPath, middleware.RequireAuth(clerkConfigured, m))
 	apiAuthenticated.RegisterHandlers(authenticated, apiAuthenticatedV1Handler)
 

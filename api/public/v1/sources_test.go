@@ -58,7 +58,7 @@ func newTestRouter(srcRepo sources.Repository, pkRepo publickeys.Repository) *gi
 	router.Use(middleware.ErrorHandler(zap.NewNop()))
 	// The profile endpoints are not under test here, so their collaborators are left nil: the
 	// source routes never reach them.
-	handler := v1.NewServer(zap.NewNop(), srcRepo, pkRepo, nil, nil)
+	handler := v1.NewServer(zap.NewNop(), srcRepo, pkRepo, nil, nil, nil)
 	public.RegisterHandlers(router, handler)
 	return router
 }

@@ -78,6 +78,7 @@ func process(
 			BatchSize: size,
 			Delay:     delay,
 		},
+		m,
 	)
 
 	// Setup signal handling

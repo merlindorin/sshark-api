@@ -11,6 +11,8 @@ import (
 	"github.com/merlindorin/sshark-api/api/authenticated"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.uber.org/zap"
+
+	"github.com/merlindorin/sshark-api/internal/metrics"
 )
 
 // errorKey is the field ad-hoc error responses use. Named so the linter stops counting it,
@@ -26,6 +28,7 @@ type Server struct {
 	keyServices     KeyServices
 	profileServices ProfileServices
 	taskServices    TaskServices
+	metrics         *metrics.Metrics
 }
 
 //nolint:revive // method name from generated interface
@@ -167,12 +170,14 @@ func NewServer(
 	keyServices KeyServices,
 	profileServices ProfileServices,
 	taskServices TaskServices,
+	m *metrics.Metrics,
 ) *Server {
 	return &Server{
 		logger:          logger,
 		keyServices:     keyServices,
 		profileServices: profileServices,
 		taskServices:    taskServices,
+		metrics:         m,
 	}
 }
 
@@ -185,29 +190,50 @@ func (s Server) GetMyTask(c *gin.Context, id openapi_types.UUID) {
 }
 
 func (s Server) DeleteMyProfile(c *gin.Context) {
+	if s.metrics != nil {
+		s.metrics.APIUserOps.Add(c.Request.Context(), 1, metrics.WithOperationType("profile_delete"))
+	}
 	DeleteMyProfile(c, s.logger, s.profileServices)
 }
 
 func (s Server) SetMyUsername(c *gin.Context) {
+	if s.metrics != nil {
+		s.metrics.APIUserOps.Add(c.Request.Context(), 1, metrics.WithOperationType("profile_set_username"))
+	}
 	SetMyUsername(c, s.logger, s.profileServices)
 }
 
 func (s Server) CheckUsernameAvailable(c *gin.Context, params authenticated.CheckUsernameAvailableParams) {
+	if s.metrics != nil {
+		s.metrics.APIUserOps.Add(c.Request.Context(), 1, metrics.WithOperationType("profile_check_username"))
+	}
 	CheckUsernameAvailable(c, s.logger, s.profileServices, params)
 }
 
 func (s Server) GetMe(c *gin.Context) {
+	if s.metrics != nil {
+		s.metrics.APIUserOps.Add(c.Request.Context(), 1, metrics.WithOperationType("profile_get"))
+	}
 	Me(c, s.logger, s.profileServices)
 }
 
 func (s Server) ListMyKeys(c *gin.Context) {
+	if s.metrics != nil {
+		s.metrics.APIUserOps.Add(c.Request.Context(), 1, metrics.WithOperationType("key_list"))
+	}
 	ListMyKeys(c, s.logger, s.keyServices)
 }
 
 func (s Server) RefreshMyKeys(c *gin.Context) {
+	if s.metrics != nil {
+		s.metrics.APIUserOps.Add(c.Request.Context(), 1, metrics.WithOperationType("key_refresh"))
+	}
 	RefreshMyKeys(c, s.logger, s.keyServices)
 }
 
 func (s Server) RevokeMyKey(c *gin.Context, id openapi_types.UUID) {
+	if s.metrics != nil {
+		s.metrics.APIUserOps.Add(c.Request.Context(), 1, metrics.WithOperationType("key_revoke"))
+	}
 	RevokeMyKey(c, s.logger, s.keyServices, id)
 }

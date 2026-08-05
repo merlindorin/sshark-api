@@ -26,8 +26,12 @@
 ## Features
 
 - Fetch SSH and GPG public keys from GitHub and GitLab users
+- User profiles with Clerk authentication
+- Verified key ownership via OAuth provider connections
+- Background task system for key refresh and revocation
+- Periodic profile synchronization
 - Full-text search across keys using PostgreSQL
-- RESTful JSON API
+- RESTful JSON API (public and authenticated endpoints)
 - Health check endpoints for Kubernetes deployments
 
 ## Requirements
@@ -65,6 +69,8 @@ Configuration can be set via CLI flags or environment variables.
 | -                  | `POSTGRES_PASSWORD`  | -           | PostgreSQL password       |
 | -                  | `POSTGRES_DATABASE`  | `sshark`    | PostgreSQL database       |
 | -                  | `POSTGRES_SSL_MODE`  | `disable`   | PostgreSQL SSL mode       |
+| -                  | `CLERK_SECRET_KEY`   | -           | Clerk API secret key (required for authenticated endpoints) |
+| -                  | `REFRESH_INTERVAL`   | `24h`       | Profile refresh interval  |
 
 ## API
 
@@ -147,6 +153,38 @@ curl "http://localhost:8080/api/v1/ssh/search?q=@source.username:{linus*}%26(@so
 | `source.provider`  | Provider (github, gitlab)      |
 | `source.user_id`   | User ID from provider          |
 | `source.uri`       | Source URI                     |
+
+### Authenticated Endpoints
+
+The API provides authenticated endpoints for user profile and key management. These require a valid Clerk session token in the `Authorization` header.
+
+#### Profile Management
+
+- `GET /api/v1/me` — Get current user profile
+- `GET /api/v1/profile` — Get or create user profile with username
+- `PATCH /api/v1/profile` — Update profile settings
+- `DELETE /api/v1/profile` — Delete account
+
+#### Key Management
+
+- `GET /api/v1/keys` — List user's verified keys
+- `POST /api/v1/keys/refresh` — Trigger key refresh from connected providers
+- `DELETE /api/v1/keys/:id` — Revoke a key
+
+#### Public Profiles
+
+- `GET /api/v1/users/:username` — Get public profile by username
+- `GET /api/v1/users/:username/keys` — List user's public keys
+
+#### Background Tasks
+
+- `GET /api/v1/tasks` — List user's background tasks (refresh, revocation)
+- `GET /api/v1/tasks/:id` — Get task status
+
+Tasks track asynchronous operations like:
+- Key refresh from OAuth providers
+- Key revocation checks
+- Profile synchronization
 
 ## Development
 

@@ -30,12 +30,14 @@ func RequireAuth(clerkConfigured bool, m *metrics.Metrics) gin.HandlerFunc {
 		ctx := c.Request.Context()
 
 		if !clerkConfigured {
-			m.APIAuthAttempts.Add(ctx, 1,
-				metric.WithAttributes(
-					attribute.String("result", "unconfigured"),
-					attribute.String("auth_type", "clerk"),
-				),
-			)
+			if m != nil {
+				m.APIAuthAttempts.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("result", "unconfigured"),
+						attribute.String("auth_type", "clerk"),
+					),
+				)
+			}
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 				errorKey: "authentication is not configured on this server: CLERK_TOKEN is unset",
 			})
@@ -46,12 +48,14 @@ func RequireAuth(clerkConfigured bool, m *metrics.Metrics) gin.HandlerFunc {
 		token := strings.TrimPrefix(authorization, "Bearer ")
 
 		if token == "" {
-			m.APIAuthAttempts.Add(ctx, 1,
-				metric.WithAttributes(
-					attribute.String("result", "missing_token"),
-					attribute.String("auth_type", "clerk"),
-				),
-			)
+			if m != nil {
+				m.APIAuthAttempts.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("result", "missing_token"),
+						attribute.String("auth_type", "clerk"),
+					),
+				)
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "missing authorization token"})
 			return
 		}
@@ -63,44 +67,52 @@ func RequireAuth(clerkConfigured bool, m *metrics.Metrics) gin.HandlerFunc {
 
 			key, err := apikey.Verify(ctx, params)
 			if err != nil {
-				m.APIAuthAttempts.Add(ctx, 1,
-					metric.WithAttributes(
-						attribute.String("result", "invalid"),
-						attribute.String("auth_type", "api_key"),
-					),
-				)
+				if m != nil {
+					m.APIAuthAttempts.Add(ctx, 1,
+						metric.WithAttributes(
+							attribute.String("result", "invalid"),
+							attribute.String("auth_type", "api_key"),
+						),
+					)
+				}
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "invalid API key"})
 				return
 			}
 
 			if key.Revoked {
-				m.APIAuthAttempts.Add(ctx, 1,
-					metric.WithAttributes(
-						attribute.String("result", "revoked"),
-						attribute.String("auth_type", "api_key"),
-					),
-				)
+				if m != nil {
+					m.APIAuthAttempts.Add(ctx, 1,
+						metric.WithAttributes(
+							attribute.String("result", "revoked"),
+							attribute.String("auth_type", "api_key"),
+						),
+					)
+				}
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "API key has been revoked"})
 				return
 			}
 
 			if key.Expired {
-				m.APIAuthAttempts.Add(ctx, 1,
-					metric.WithAttributes(
-						attribute.String("result", "expired"),
-						attribute.String("auth_type", "api_key"),
-					),
-				)
+				if m != nil {
+					m.APIAuthAttempts.Add(ctx, 1,
+						metric.WithAttributes(
+							attribute.String("result", "expired"),
+							attribute.String("auth_type", "api_key"),
+						),
+					)
+				}
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "API key has expired"})
 				return
 			}
 
-			m.APIAuthAttempts.Add(ctx, 1,
-				metric.WithAttributes(
-					attribute.String("result", "success"),
-					attribute.String("auth_type", "api_key"),
-				),
-			)
+			if m != nil {
+				m.APIAuthAttempts.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("result", "success"),
+						attribute.String("auth_type", "api_key"),
+					),
+				)
+			}
 
 			claims := &clerk.SessionClaims{
 				RegisteredClaims: clerk.RegisteredClaims{
@@ -121,21 +133,23 @@ func RequireAuth(clerkConfigured bool, m *metrics.Metrics) gin.HandlerFunc {
 		sessionMiddleware(c)
 		finalStatus := c.Writer.Status()
 
-		if finalStatus == http.StatusUnauthorized || c.IsAborted() {
-			m.APIAuthAttempts.Add(ctx, 1,
-				metric.WithAttributes(
-					attribute.String("result", "invalid"),
-					attribute.String("auth_type", "session"),
-				),
-			)
-		} else if initialStatus == finalStatus {
-			// Session verification succeeded
-			m.APIAuthAttempts.Add(ctx, 1,
-				metric.WithAttributes(
-					attribute.String("result", "success"),
-					attribute.String("auth_type", "session"),
-				),
-			)
+		if m != nil {
+			if finalStatus == http.StatusUnauthorized || c.IsAborted() {
+				m.APIAuthAttempts.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("result", "invalid"),
+						attribute.String("auth_type", "session"),
+					),
+				)
+			} else if initialStatus == finalStatus {
+				// Session verification succeeded
+				m.APIAuthAttempts.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("result", "success"),
+						attribute.String("auth_type", "session"),
+					),
+				)
+			}
 		}
 	}
 }
