@@ -107,6 +107,17 @@ func (s *Serve) Run(
 	defer pool.Close()
 
 	clerk.SetKey(s.ClerkToken)
+	clerkConfigured := s.ClerkToken != ""
+
+	// Worth shouting about: the server still starts and serves public search, so nothing looks
+	// broken until someone signs in and every authenticated call comes back 401.
+	if !clerkConfigured {
+		namedLogger.Error(
+			"CLERK_TOKEN is not set — every authenticated request will be rejected. " +
+				"Public search keeps working; /me, key management and profiles do not.",
+		)
+	}
+
 	gin.SetMode(getGinMode(development))
 
 	sourcesRepo := sourcesrepo.NewRepository(pool)
@@ -146,7 +157,8 @@ func (s *Serve) Run(
 	}
 
 	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(namedLogger, keyServices, profileServices)
-	apiAuthenticated.RegisterHandlers(router.Group(apiPath, middleware.RequireAuth()), apiAuthenticatedV1Handler)
+	authenticated := router.Group(apiPath, middleware.RequireAuth(clerkConfigured))
+	apiAuthenticated.RegisterHandlers(authenticated, apiAuthenticatedV1Handler)
 
 	errs, ctx := errgroup.WithContext(ctx)
 	errs.Go(waitForShutdownSignal(ctx))

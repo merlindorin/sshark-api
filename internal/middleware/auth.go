@@ -13,11 +13,24 @@ import (
 // errorKey is the field the auth failures respond with.
 const errorKey = "error"
 
-func RequireAuth() gin.HandlerFunc {
+// RequireAuth authenticates a request with Clerk.
+//
+// clerkConfigured says whether the server actually holds a Clerk key. Without one, Clerk has no
+// signing keys to check against and rejects every token as unverifiable — a 401 that reads like
+// an expired session but is really a misconfigured server. Saying so plainly turns a confusing
+// symptom into an obvious cause.
+func RequireAuth(clerkConfigured bool) gin.HandlerFunc {
 	sessionMiddleware := AdaptClerk(clerkhttp.RequireHeaderAuthorization())
 
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
+
+		if !clerkConfigured {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				errorKey: "authentication is not configured on this server: CLERK_TOKEN is unset",
+			})
+			return
+		}
 
 		authorization := strings.TrimSpace(c.GetHeader("Authorization"))
 		token := strings.TrimPrefix(authorization, "Bearer ")
