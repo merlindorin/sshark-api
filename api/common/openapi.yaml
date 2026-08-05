@@ -281,6 +281,7 @@ components:
                 - INVALID_USERNAME
                 - USERNAME_TAKEN
                 - PROFILE_NOT_FOUND
+                - TASK_NOT_FOUND
               example: INVALID_SEARCH_QUERY
             message:
               type: string

@@ -14,6 +14,7 @@ import (
 	"github.com/gin-contrib/timeout"
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/merlindorin/go-shared/pkg/cmd"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
@@ -28,23 +29,31 @@ import (
 	apiPublic "github.com/merlindorin/sshark-api/api/public"
 
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
+	"github.com/merlindorin/sshark-api/internal/app/keyops"
+	"github.com/merlindorin/sshark-api/internal/domain/profiles"
 	"github.com/merlindorin/sshark-api/internal/domain/publickeys"
 	"github.com/merlindorin/sshark-api/internal/domain/scraper"
 	"github.com/merlindorin/sshark-api/internal/domain/sources"
+	"github.com/merlindorin/sshark-api/internal/domain/tasks"
 	"github.com/merlindorin/sshark-api/internal/infra/fetchers/github"
 	"github.com/merlindorin/sshark-api/internal/infra/fetchers/gitlab"
 	"github.com/merlindorin/sshark-api/internal/infra/identity"
+	"github.com/merlindorin/sshark-api/internal/infra/jobs"
 	profilesrepo "github.com/merlindorin/sshark-api/internal/infra/profiles/postgres"
 	publickeysrepo "github.com/merlindorin/sshark-api/internal/infra/publickeys/postgres"
 	infrascraper "github.com/merlindorin/sshark-api/internal/infra/scraper"
 	scraperrepo "github.com/merlindorin/sshark-api/internal/infra/scraper/postgres"
 	sourcesrepo "github.com/merlindorin/sshark-api/internal/infra/sources/postgres"
+	tasksrepo "github.com/merlindorin/sshark-api/internal/infra/tasks/postgres"
 	"github.com/merlindorin/sshark-api/internal/middleware"
 	"github.com/merlindorin/sshark-api/internal/otel"
 )
 
 const (
 	apiPath = "/api/v1"
+
+	// queueStopTimeout is how long jobs in flight get to finish on shutdown.
+	queueStopTimeout = 30 * time.Second
 )
 
 type Serve struct {
@@ -121,6 +130,7 @@ func (s *Serve) Run(
 	gin.SetMode(getGinMode(development))
 
 	sourcesRepo := sourcesrepo.NewRepository(pool)
+	tasksRepo := tasksrepo.NewRepository(pool)
 	publickeysRepo := publickeysrepo.NewRepository(pool)
 	profilesRepo := profilesrepo.NewRepository(pool)
 	identities := identity.NewResolver()
@@ -141,6 +151,65 @@ func (s *Serve) Run(
 	apiPublicV1Handler := apiPublicV1.NewServer(namedLogger, sourcesRepo, publickeysRepo, profilesRepo, identities)
 	apiPublic.RegisterHandlers(router.Group(apiPath), apiPublicV1Handler)
 
+	keyServices, profileServices, taskServices, queue, err := s.buildAuthenticatedServices(
+		namedLogger, pool, sourcesRepo, publickeysRepo, profilesRepo, tasksRepo, identities)
+	if err != nil {
+		return err
+	}
+
+	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(
+		namedLogger, keyServices, profileServices, taskServices)
+	authenticated := router.Group(apiPath, middleware.RequireAuth(clerkConfigured))
+	apiAuthenticated.RegisterHandlers(authenticated, apiAuthenticatedV1Handler)
+
+	errs, ctx := errgroup.WithContext(ctx)
+	errs.Go(runQueue(ctx, queue, namedLogger))
+	errs.Go(waitForShutdownSignal(ctx))
+	errs.Go(runMeterProvider(ctx, name, version, namedLogger))
+	errs.Go(httpServer.Start(ctx, namedLogger, router))
+
+	if waitErr := errs.Wait(); waitErr != nil {
+		namedLogger.Info("Shutting down", zap.Error(waitErr))
+	}
+
+	return nil
+}
+
+// runQueue processes background jobs alongside the HTTP server, and drains what is in flight
+// when the process is asked to stop.
+// buildAuthenticatedServices assembles what the signed-in endpoints need, including the queue
+// that carries out anything too slow to hold a request open for.
+func (s *Serve) buildAuthenticatedServices(
+	logger *zap.Logger,
+	pool *pgxpool.Pool,
+	sourcesRepo sources.Repository,
+	publickeysRepo publickeys.Repository,
+	profilesRepo profiles.Repository,
+	tasksRepo tasks.Repository,
+	identities *identity.Resolver,
+) (
+	apiAuthenticatedV1.KeyServices,
+	apiAuthenticatedV1.ProfileServices,
+	apiAuthenticatedV1.TaskServices,
+	*jobs.Queue,
+	error,
+) {
+	keyOps := &keyops.Service{
+		Logger:     logger,
+		Profiles:   profilesRepo,
+		Sources:    sourcesRepo,
+		PublicKeys: publickeysRepo,
+		Identities: identities,
+		Scrapers: s.buildScrapers(
+			logger, sourcesRepo, publickeysRepo, scraperrepo.NewProgressRepository(pool)),
+	}
+
+	queue, err := jobs.NewQueue(logger, pool, tasksRepo, keyOps)
+	if err != nil {
+		return apiAuthenticatedV1.KeyServices{}, apiAuthenticatedV1.ProfileServices{},
+			apiAuthenticatedV1.TaskServices{}, nil, fmt.Errorf("failed to create the job queue: %w", err)
+	}
+
 	profileServices := apiAuthenticatedV1.ProfileServices{
 		Profiles:   profilesRepo,
 		Sources:    sourcesRepo,
@@ -152,24 +221,29 @@ func (s *Serve) Run(
 		PublicKeys: publickeysRepo,
 		Profiles:   profileServices,
 		Identities: identities,
-		Scrapers: s.buildScrapers(
-			namedLogger, sourcesRepo, publickeysRepo, scraperrepo.NewProgressRepository(pool)),
+		Queue:      queue,
 	}
 
-	apiAuthenticatedV1Handler := apiAuthenticatedV1.NewServer(namedLogger, keyServices, profileServices)
-	authenticated := router.Group(apiPath, middleware.RequireAuth(clerkConfigured))
-	apiAuthenticated.RegisterHandlers(authenticated, apiAuthenticatedV1Handler)
+	return keyServices, profileServices, apiAuthenticatedV1.TaskServices{Tasks: tasksRepo, Queue: queue}, queue, nil
+}
 
-	errs, ctx := errgroup.WithContext(ctx)
-	errs.Go(waitForShutdownSignal(ctx))
-	errs.Go(runMeterProvider(ctx, name, version, namedLogger))
-	errs.Go(httpServer.Start(ctx, namedLogger, router))
+func runQueue(ctx context.Context, queue *jobs.Queue, logger *zap.Logger) func() error {
+	return func() error {
+		if err := queue.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start the job queue: %w", err)
+		}
 
-	if waitErr := errs.Wait(); waitErr != nil {
-		namedLogger.Info("Shutting down", zap.Error(waitErr))
+		<-ctx.Done()
+
+		stopCtx, cancel := context.WithTimeout(context.Background(), queueStopTimeout)
+		defer cancel()
+
+		if err := queue.Stop(stopCtx); err != nil {
+			logger.Warn("job queue did not stop cleanly", zap.Error(err))
+		}
+
+		return nil
 	}
-
-	return nil
 }
 
 func runMeterProvider(ctx context.Context, name, version string, logger *zap.Logger) func() error {

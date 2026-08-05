@@ -119,6 +119,16 @@ func ProfileNotFoundError(c *gin.Context) *api.APIError {
 	))
 }
 
+func TaskNotFoundError(c *gin.Context) *api.APIError {
+	return api.NewAPIError(c, http.StatusNotFound, api.NewDetailedError(
+		c,
+		"TASK_NOT_FOUND",
+		"Task not found",
+		"No task with this identifier belongs to you.",
+		"Check the identifier, or list your recent tasks.",
+	))
+}
+
 func InvalidSearchQueryError(c *gin.Context, err error, q string, examples []string) *api.APIError {
 	return api.NewAPIError(c, http.StatusBadRequest, api.NewDetailedError(
 		c,

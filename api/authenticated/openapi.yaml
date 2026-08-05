@@ -180,6 +180,73 @@ paths:
               schema:
                 $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
 
+  /me/tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List your recent tasks
+      description: The long-running operations you asked for, newest first.
+      operationId: listMyTasks
+      security:
+        - ClerkAuth: []
+      responses:
+        '200':
+          description: Recent tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - tasks
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
+  /me/tasks/{id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get one of your tasks
+      description: Poll this while a task is pending or running to follow its progress.
+      operationId: getMyTask
+      security:
+        - ClerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          description: Missing or invalid authentication
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: No such task belongs to you
+          content:
+            application/json:
+              schema:
+                $ref: '../common/openapi.yaml#/components/schemas/ErrorResponse'
+
   /me/keys/refresh:
     post:
       tags:
@@ -193,12 +260,14 @@ paths:
       security:
         - ClerkAuth: []
       responses:
-        '200':
-          description: The authenticated user's keys, after refresh
+        '202':
+          description: |
+            The refresh was queued. Poll the returned task to follow it. An identical refresh
+            already in flight is returned rather than queued again.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MyKeysResponse'
+                $ref: '#/components/schemas/Task'
         '401':
           description: Missing or invalid authentication
           content:
@@ -234,8 +303,12 @@ paths:
             format: uuid
           example: "550e8400-e29b-41d4-a716-446655440000"
       responses:
-        '204':
-          description: Key revoked at the provider and removed from sshark
+        '202':
+          description: The revocation was queued. Poll the returned task to follow it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
         '400':
           description: Invalid key ID format
           content:
@@ -423,6 +496,59 @@ components:
           format: int64
           description: Unix timestamp of user creation
           example: 1705449600
+
+    Task:
+      type: object
+      description: A long-running operation the user asked for
+      required:
+        - id
+        - kind
+        - status
+        - progress
+        - total
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: What the task does
+          enum:
+            - refresh_keys
+            - revoke_key
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - succeeded
+            - failed
+        progress:
+          type: integer
+          description: Steps completed, in the task's own unit
+        total:
+          type: integer
+          description: Steps in total, or 0 while the task does not yet know
+        message:
+          type: string
+          description: What the task is doing right now
+        result:
+          type: object
+          additionalProperties: true
+          description: Task-specific outcome, present once it succeeds
+        error:
+          type: string
+          description: Why it failed, present once it fails
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
 
     MyProfile:
       type: object
@@ -795,6 +921,8 @@ components:
           example: 1716883200
 
 tags:
+  - name: Tasks
+    description: Long-running operations
   - name: User
     description: User information (authenticated)
   - name: API Keys

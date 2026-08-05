@@ -25,6 +25,7 @@ type Server struct {
 	logger          *zap.Logger
 	keyServices     KeyServices
 	profileServices ProfileServices
+	taskServices    TaskServices
 }
 
 //nolint:revive // method name from generated interface
@@ -161,12 +162,26 @@ func (s Server) DeleteApiKey(c *gin.Context, id string) {
 	c.Status(http.StatusNoContent)
 }
 
-func NewServer(logger *zap.Logger, keyServices KeyServices, profileServices ProfileServices) *Server {
+func NewServer(
+	logger *zap.Logger,
+	keyServices KeyServices,
+	profileServices ProfileServices,
+	taskServices TaskServices,
+) *Server {
 	return &Server{
 		logger:          logger,
 		keyServices:     keyServices,
 		profileServices: profileServices,
+		taskServices:    taskServices,
 	}
+}
+
+func (s Server) ListMyTasks(c *gin.Context) {
+	ListMyTasks(c, s.logger, s.taskServices)
+}
+
+func (s Server) GetMyTask(c *gin.Context, id openapi_types.UUID) {
+	GetMyTask(c, s.logger, s.taskServices, id)
 }
 
 func (s Server) DeleteMyProfile(c *gin.Context) {

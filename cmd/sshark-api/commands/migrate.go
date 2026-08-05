@@ -11,6 +11,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // postgres driver for migrate
 	_ "github.com/golang-migrate/migrate/v4/source/file"       // file source for migrate
 	"github.com/merlindorin/go-shared/pkg/cmd"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivermigrate"
 	"go.uber.org/zap"
 
 	"github.com/merlindorin/sshark-api/cmd/sshark-api/globals"
@@ -20,7 +22,7 @@ type Migrate struct {
 	MigrationsPath string `help:"Path to migrations directory" default:"db/migrations"`
 }
 
-func (m *Migrate) Run(_ context.Context, common *cmd.Commons, postgres *globals.Postgres) error {
+func (m *Migrate) Run(ctx context.Context, common *cmd.Commons, postgres *globals.Postgres) error {
 	logger := common.MustLogger().Named("migrate")
 
 	logger.Info(
@@ -74,6 +76,31 @@ func (m *Migrate) Run(_ context.Context, common *cmd.Commons, postgres *globals.
 			zap.Bool("dirty", dirty),
 		)
 	}
+
+	return m.migrateRiver(ctx, logger, postgres)
+}
+
+// migrateRiver applies the queue's own schema. River owns those tables and ships its migrations
+// as code, so they run alongside ours rather than being copied into db/migrations where they
+// would drift from whatever version of River is compiled in.
+func (m *Migrate) migrateRiver(ctx context.Context, logger *zap.Logger, postgres *globals.Postgres) error {
+	pool, err := postgres.Pool(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to connect for river migrations: %w", err)
+	}
+	defer pool.Close()
+
+	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create river migrator: %w", err)
+	}
+
+	result, err := migrator.Migrate(ctx, rivermigrate.DirectionUp, nil)
+	if err != nil {
+		return fmt.Errorf("failed to run river migrations: %w", err)
+	}
+
+	logger.Info("River migrations applied", zap.Int("versions", len(result.Versions)))
 
 	return nil
 }

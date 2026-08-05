@@ -41,6 +41,20 @@ const (
 	ApiKeyWithSecretTypeApiKey ApiKeyWithSecretType = "api_key"
 )
 
+// Defines values for TaskKind.
+const (
+	RefreshKeys TaskKind = "refresh_keys"
+	RevokeKey   TaskKind = "revoke_key"
+)
+
+// Defines values for TaskStatus.
+const (
+	Failed    TaskStatus = "failed"
+	Pending   TaskStatus = "pending"
+	Running   TaskStatus = "running"
+	Succeeded TaskStatus = "succeeded"
+)
+
 // ApiKey defines model for ApiKey.
 type ApiKey struct {
 	// Claims Custom claims associated with the API key
@@ -305,6 +319,39 @@ type SetUsernameRequest struct {
 	Username string `json:"username"`
 }
 
+// Task A long-running operation the user asked for
+type Task struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Error Why it failed, present once it fails
+	Error      *string            `json:"error,omitempty"`
+	FinishedAt *time.Time         `json:"finished_at,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Kind What the task does
+	Kind TaskKind `json:"kind"`
+
+	// Message What the task is doing right now
+	Message *string `json:"message,omitempty"`
+
+	// Progress Steps completed, in the task's own unit
+	Progress int `json:"progress"`
+
+	// Result Task-specific outcome, present once it succeeds
+	Result    *map[string]interface{} `json:"result,omitempty"`
+	StartedAt *time.Time              `json:"started_at,omitempty"`
+	Status    TaskStatus              `json:"status"`
+
+	// Total Steps in total, or 0 while the task does not yet know
+	Total int `json:"total"`
+}
+
+// TaskKind What the task does
+type TaskKind string
+
+// TaskStatus defines model for Task.Status.
+type TaskStatus string
+
 // UserInfo defines model for UserInfo.
 type UserInfo struct {
 	// CreatedAt Unix timestamp of user creation
@@ -382,6 +429,12 @@ type ServerInterface interface {
 	// Release your SShark profile
 	// (DELETE /me/profile)
 	DeleteMyProfile(c *gin.Context)
+	// List your recent tasks
+	// (GET /me/tasks)
+	ListMyTasks(c *gin.Context)
+	// Get one of your tasks
+	// (GET /me/tasks/{id})
+	GetMyTask(c *gin.Context, id openapi_types.UUID)
 	// Claim or change your username
 	// (PUT /me/username)
 	SetMyUsername(c *gin.Context)
@@ -541,6 +594,47 @@ func (siw *ServerInterfaceWrapper) DeleteMyProfile(c *gin.Context) {
 	siw.Handler.DeleteMyProfile(c)
 }
 
+// ListMyTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListMyTasks(c *gin.Context) {
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListMyTasks(c)
+}
+
+// GetMyTask operation middleware
+func (siw *ServerInterfaceWrapper) GetMyTask(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClerkAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetMyTask(c, id)
+}
+
 // SetMyUsername operation middleware
 func (siw *ServerInterfaceWrapper) SetMyUsername(c *gin.Context) {
 
@@ -626,6 +720,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/me/keys/refresh", wrapper.RefreshMyKeys)
 	router.DELETE(options.BaseURL+"/me/keys/:id", wrapper.RevokeMyKey)
 	router.DELETE(options.BaseURL+"/me/profile", wrapper.DeleteMyProfile)
+	router.GET(options.BaseURL+"/me/tasks", wrapper.ListMyTasks)
+	router.GET(options.BaseURL+"/me/tasks/:id", wrapper.GetMyTask)
 	router.PUT(options.BaseURL+"/me/username", wrapper.SetMyUsername)
 	router.GET(options.BaseURL+"/me/username/available", wrapper.CheckUsernameAvailable)
 }
