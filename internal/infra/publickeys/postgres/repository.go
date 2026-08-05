@@ -51,37 +51,6 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*publickeys.Entity,
 	return &entity, nil
 }
 
-func (r *Repository) GetByFingerprint(ctx context.Context, fingerprint string) (*publickeys.Entity, error) {
-	var entity publickeys.Entity
-	err := r.pool.QueryRow(ctx, `
-		SELECT id, source_id, key_type, key_data, provider_key_id, fingerprint, created_at, updated_at
-		FROM public_keys
-		WHERE fingerprint = $1
-	`, fingerprint).Scan(
-		&entity.ID,
-		&entity.SourceID,
-		&entity.KeyType,
-		&entity.KeyData,
-		&entity.ProviderKeyID,
-		&entity.Fingerprint,
-		&entity.CreatedAt,
-		&entity.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, publickeys.ErrKeyNotFound
-		}
-		return nil, err
-	}
-
-	err = r.loadMetadata(ctx, &entity)
-	if err != nil {
-		return nil, err
-	}
-
-	return &entity, nil
-}
-
 func (r *Repository) Search(
 	ctx context.Context,
 	filter publickeys.SearchFilter,
