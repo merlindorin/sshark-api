@@ -10,6 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// errorKey is the field the auth failures respond with.
+const errorKey = "error"
+
 func RequireAuth() gin.HandlerFunc {
 	sessionMiddleware := AdaptClerk(clerkhttp.RequireHeaderAuthorization())
 
@@ -20,7 +23,7 @@ func RequireAuth() gin.HandlerFunc {
 		token := strings.TrimPrefix(authorization, "Bearer ")
 
 		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing authorization token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "missing authorization token"})
 			return
 		}
 
@@ -31,17 +34,17 @@ func RequireAuth() gin.HandlerFunc {
 
 			key, err := apikey.Verify(ctx, params)
 			if err != nil {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "invalid API key"})
 				return
 			}
 
 			if key.Revoked {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key has been revoked"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "API key has been revoked"})
 				return
 			}
 
 			if key.Expired {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key has expired"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "API key has expired"})
 				return
 			}
 

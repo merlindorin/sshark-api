@@ -27,14 +27,14 @@ func Me(c *gin.Context, logger *zap.Logger, services ProfileServices) {
 	claims, ok := clerk.SessionClaimsFromContext(ctx)
 	if !ok {
 		logger.Error("failed to get user claims")
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: errUnauthorizedText})
 		return
 	}
 
 	usr, err := user.Get(ctx, claims.Subject)
 	if err != nil {
 		logger.Error("failed to get user from clerk", zap.Error(err))
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch user"})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{errorKey: "failed to fetch user"})
 		return
 	}
 
@@ -43,7 +43,7 @@ func Me(c *gin.Context, logger *zap.Logger, services ProfileServices) {
 	profile, err := services.ensureProfile(ctx, logger, claims.Subject)
 	if err != nil {
 		logger.Error("failed to ensure profile", zap.Error(err))
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to load profile"})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{errorKey: "failed to load profile"})
 		return
 	}
 
