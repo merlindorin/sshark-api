@@ -12,6 +12,7 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/publickeys"
 	"github.com/merlindorin/sshark-api/internal/domain/scraper"
 	"github.com/merlindorin/sshark-api/internal/domain/sources"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 )
 
 // Service implements a continuous scraper that fetches users and their keys.
@@ -21,6 +22,7 @@ type Service struct {
 	sourcesRepo    sources.Repository
 	publickeysRepo publickeys.Repository
 	progressRepo   scraper.ProgressRepository
+	metrics        *metrics.Metrics
 
 	// Configuration
 	batchSize int
@@ -41,6 +43,7 @@ func NewService(
 	publickeysRepo publickeys.Repository,
 	progressRepo scraper.ProgressRepository,
 	cfg Config,
+	m *metrics.Metrics,
 ) *Service {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 100
@@ -54,6 +57,7 @@ func NewService(
 		sourcesRepo:    sourcesRepo,
 		publickeysRepo: publickeysRepo,
 		progressRepo:   progressRepo,
+		metrics:        m,
 		batchSize:      cfg.BatchSize,
 		delay:          cfg.Delay,
 	}
@@ -91,6 +95,10 @@ func (s *Service) Run(ctx context.Context) error {
 		if fetchErr != nil {
 			if errors.Is(fetchErr, scraper.ErrRateLimited) {
 				s.logger.Warn("rate limited, waiting...")
+				if s.metrics != nil {
+					s.metrics.ScrapingRateLimitHits.Add(ctx, 1,
+						metrics.WithProvider(string(provider)))
+				}
 				s.sleep(ctx, time.Minute)
 				continue
 			}
@@ -137,16 +145,53 @@ func (s *Service) ScrapeUser(
 	provider scraper.Provider,
 	username string,
 ) (*scraper.ScrapeResult, error) {
+	start := time.Now()
+	providerStr := string(provider)
+
 	if provider != s.fetcher.Provider() {
 		return nil, fmt.Errorf("%w: %s", scraper.ErrProviderUnavailable, provider)
 	}
 
 	user, err := s.fetcher.FetchUser(ctx, username)
 	if err != nil {
+		if s.metrics != nil {
+			s.metrics.ScrapingRequestsTotal.Add(ctx, 1,
+				metrics.WithProvider(providerStr),
+				metrics.WithStatus("failure"))
+			s.metrics.ScrapingDuration.Record(ctx, time.Since(start).Seconds(),
+				metrics.WithProvider(providerStr),
+				metrics.WithStatus("failure"))
+			s.metrics.ScrapingErrors.Add(ctx, 1,
+				metrics.WithProvider(providerStr),
+				metrics.WithErrorType(categorizeScraperError(err)))
+		}
 		return nil, err
 	}
 
 	result := s.processUser(ctx, user)
+
+	if s.metrics != nil {
+		status := "success"
+		if result.Error != nil {
+			status = "failure"
+		}
+		s.metrics.ScrapingRequestsTotal.Add(ctx, 1,
+			metrics.WithProvider(providerStr),
+			metrics.WithStatus(status))
+		s.metrics.ScrapingDuration.Record(ctx, time.Since(start).Seconds(),
+			metrics.WithProvider(providerStr),
+			metrics.WithStatus(status))
+
+		if result.Error == nil {
+			keysDiscovered := int64(result.KeysAdded + result.KeysUpdated)
+			s.metrics.ScrapingKeysDiscovered.Add(ctx, keysDiscovered,
+				metrics.WithProvider(providerStr))
+		} else {
+			s.metrics.ScrapingErrors.Add(ctx, 1,
+				metrics.WithProvider(providerStr),
+				metrics.WithErrorType(categorizeScraperError(result.Error)))
+		}
+	}
 
 	return &result, nil
 }
@@ -505,4 +550,25 @@ func (s *Service) sleep(ctx context.Context, d time.Duration) {
 	case <-ctx.Done():
 	case <-time.After(d):
 	}
+}
+
+// categorizeScraperError categorizes errors for metrics labeling.
+func categorizeScraperError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, scraper.ErrRateLimited) {
+		return "api_limit"
+	}
+	if errors.Is(err, scraper.ErrProviderUnavailable) {
+		return "unavailable"
+	}
+	if errors.Is(err, scraper.ErrUserNotFound) {
+		return "not_found"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "timeout"
+	}
+	// Default to network for other errors
+	return "network"
 }

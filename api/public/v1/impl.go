@@ -10,6 +10,7 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/publickeys"
 	"github.com/merlindorin/sshark-api/internal/domain/sources"
 	"github.com/merlindorin/sshark-api/internal/infra/identity"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 )
 
 type Server struct {
@@ -18,6 +19,7 @@ type Server struct {
 	publickeysRepo publickeys.Repository
 	profilesRepo   profiles.Repository
 	identities     *identity.Resolver
+	metrics        *metrics.Metrics
 }
 
 //nolint:revive // method name from generated interface
@@ -30,11 +32,11 @@ func (s Server) GetStats(c *gin.Context) {
 }
 
 func (s Server) SearchSSHKeys(c *gin.Context, params public.SearchSSHKeysParams) {
-	SearchSSHKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, params)
+	SearchSSHKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, s.metrics, params)
 }
 
 func (s Server) SearchGPGKeys(c *gin.Context, params public.SearchGPGKeysParams) {
-	SearchGPGKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, params)
+	SearchGPGKeys(c, s.logger, s.sourcesRepo, s.publickeysRepo, s.metrics, params)
 }
 
 func (s Server) GetSourceByProviderAndUsername(
@@ -59,6 +61,7 @@ func NewServer(
 	publickeysRepo publickeys.Repository,
 	profilesRepo profiles.Repository,
 	identities *identity.Resolver,
+	m *metrics.Metrics,
 ) *Server {
 	return &Server{
 		logger:         logger,
@@ -66,5 +69,6 @@ func NewServer(
 		publickeysRepo: publickeysRepo,
 		profilesRepo:   profilesRepo,
 		identities:     identities,
+		metrics:        m,
 	}
 }

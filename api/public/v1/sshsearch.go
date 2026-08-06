@@ -16,6 +16,7 @@ import (
 	"github.com/merlindorin/sshark-api/internal/domain/query"
 	"github.com/merlindorin/sshark-api/internal/domain/sources"
 	querypostgres "github.com/merlindorin/sshark-api/internal/infra/query/postgres"
+	"github.com/merlindorin/sshark-api/internal/metrics"
 )
 
 func SearchSSHKeys(
@@ -23,10 +24,16 @@ func SearchSSHKeys(
 	logger *zap.Logger,
 	sourcesRepo sources.Repository,
 	publickeysRepo publickeys.Repository,
+	m *metrics.Metrics,
 	params public.SearchSSHKeysParams,
 ) {
 	ctx := c.Request.Context()
 	searchStart := time.Now()
+
+	// Record search operation metric
+	if m != nil {
+		m.APISearchOps.Add(ctx, 1, metrics.WithKeyType("ssh"))
+	}
 
 	limit := defaultValue(params.Limit, 10)
 	offset := defaultValue(params.Offset, 0)
@@ -109,6 +116,11 @@ func SearchSSHKeys(
 
 		pk := entityToSSHPublicKey(entity, source)
 		entities = append(entities, pk)
+	}
+
+	// Record search results metric
+	if m != nil {
+		m.APISearchResults.Record(ctx, int64(result.Total), metrics.WithKeyType("ssh"))
 	}
 
 	c.JSON(http.StatusOK, public.SSHSearchResponse{
