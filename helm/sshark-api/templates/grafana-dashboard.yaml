@@ -21,7 +21,7 @@ spec:
       "tags": ["sshark", "production", "api"],
       "timezone": "browser",
       "schemaVersion": 39,
-      "version": 7,
+      "version": 8,
       "refresh": "30s",
       "time": {
         "from": "now-6h",
@@ -319,8 +319,8 @@ spec:
               "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
               "targets": [
                 {
-                  "expr": "topk(10, histogram_quantile(0.95, sum by (le, endpoint, method) (rate(api_request_duration_seconds_bucket[$__rate_interval]))) * 1000)",
-                  "legendFormat": "{{`{{method}}`}} {{`{{endpoint}}`}}",
+                  "expr": "topk(10, histogram_quantile(0.95, sum by (le, exported_endpoint, method) (rate(api_request_duration_seconds_bucket[$__rate_interval]))) * 1000)",
+                  "legendFormat": "{{`{{method}}`}} {{`{{exported_endpoint}}`}}",
                   "refId": "A",
                   "instant": true,
                   "format": "table"
@@ -336,7 +336,7 @@ spec:
                   "unit": "ms"
                 },
                 "overrides": [
-                  {"matcher": {"id": "byName", "options": "endpoint"}, "properties": [{"id": "custom.width", "value": 300}, {"id": "displayName", "value": "Endpoint"}]},
+                  {"matcher": {"id": "byName", "options": "exported_endpoint"}, "properties": [{"id": "custom.width", "value": 300}, {"id": "displayName", "value": "Endpoint"}]},
                   {"matcher": {"id": "byName", "options": "method"}, "properties": [{"id": "displayName", "value": "Method"}]},
                   {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "p95 Latency"}, {"id": "custom.width", "value": 150}]}
                 ]
