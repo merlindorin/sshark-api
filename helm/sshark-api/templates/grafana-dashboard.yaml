@@ -21,7 +21,7 @@ spec:
       "tags": ["sshark", "production", "api"],
       "timezone": "browser",
       "schemaVersion": 39,
-      "version": 6,
+      "version": 7,
       "refresh": "30s",
       "time": {
         "from": "now-6h",
@@ -289,8 +289,8 @@ spec:
               "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
               "targets": [
                 {
-                  "expr": "topk(10, sum by (endpoint, method) (rate(api_requests_total[$__rate_interval])))",
-                  "legendFormat": "{{`{{method}}`}} {{`{{endpoint}}`}}",
+                  "expr": "topk(10, sum by (exported_endpoint, method) (rate(api_requests_total[$__rate_interval])))",
+                  "legendFormat": "{{`{{method}}`}} {{`{{exported_endpoint}}`}}",
                   "refId": "A",
                   "instant": true
                 }
