@@ -27,8 +27,11 @@
 
 - Fetch SSH and GPG public keys from GitHub and GitLab users
 - Full-text search across keys using PostgreSQL
-- RESTful JSON API
+- User profiles with verified key ownership
+- Background task queue for key refresh and revocation
+- RESTful JSON API with authentication
 - Health check endpoints for Kubernetes deployments
+- OpenTelemetry metrics and Grafana dashboards
 
 ## Requirements
 
@@ -65,8 +68,68 @@ Configuration can be set via CLI flags or environment variables.
 | -                  | `POSTGRES_PASSWORD`  | -           | PostgreSQL password       |
 | -                  | `POSTGRES_DATABASE`  | `sshark`    | PostgreSQL database       |
 | -                  | `POSTGRES_SSL_MODE`  | `disable`   | PostgreSQL SSL mode       |
+| -                  | `CLERK_SECRET_KEY`   | -           | Clerk authentication key  |
 
 ## API
+
+### Authentication
+
+Protected endpoints require a bearer token from Clerk:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/keys
+```
+
+### Public Endpoints
+
+#### GET /users/{username}
+
+Retrieve a public user profile:
+
+```bash
+curl http://localhost:8080/users/merlindorin
+```
+
+Returns connected accounts and published keys.
+
+#### GET /users/{username}.keys
+
+Download SSH public keys in `authorized_keys` format:
+
+```bash
+curl http://localhost:8080/users/merlindorin.keys >> ~/.ssh/authorized_keys
+```
+
+#### GET /users/{username}.gpg
+
+Download GPG public keys in ASCII armor format:
+
+```bash
+curl http://localhost:8080/users/merlindorin.gpg | gpg --import
+```
+
+### Authenticated Endpoints
+
+#### GET /api/v1/me/keys
+
+List your published keys across all connected providers.
+
+#### POST /api/v1/me/keys/refresh
+
+Trigger an on-demand refresh of your keys from connected providers. Returns a task ID for tracking.
+
+#### DELETE /api/v1/me/keys/{id}
+
+Revoke a key by deleting it at the provider, then removing it from SShark.
+
+#### GET /api/v1/me/username
+
+Retrieve your claimed username.
+
+#### PUT /api/v1/me/username
+
+Claim or change your username (must be unique and not reserved).
 
 ### Search Query Syntax
 
@@ -180,10 +243,42 @@ docker run -p 8080:8080 \
   sshark-api
 ```
 
+## Background Tasks
+
+The API uses a persistent queue backed by PostgreSQL to handle long-running operations:
+
+- **Profile refresh** — Scheduled daily re-fetch of keys for active profiles
+- **On-demand refresh** — User-triggered key updates via `/api/v1/me/keys/refresh`
+- **Key revocation** — Delete keys at the provider before removing locally
+
+Task status can be tracked through the Activity table in user profiles on the web interface.
+
+## Observability
+
+### Metrics
+
+The service exports OpenTelemetry metrics for:
+
+- HTTP request rate, latency, and errors (golden signals)
+- Database connection pool usage
+- Background task queue depth and processing time
+- Authentication success/failure rates
+
+### Grafana Dashboard
+
+A pre-built dashboard is included at `grafana/dashboard.json` with panels for:
+
+- Request throughput and P95 latency
+- Error rates by endpoint
+- Database pool health
+- Task queue backlog
+
+Import the dashboard into your Grafana instance and configure it to read from your OTLP collector.
+
 ## Architecture
 
 The project follows a clean architecture pattern:
 
 - **Domain Layer** (`internal/domain/`) - Business logic and interfaces
-- **Infrastructure Layer** (`internal/infra/`) - PostgreSQL repositories, external clients
-- **API Layer** (`internal/api/`) - HTTP handlers using Gin framework
+- **Infrastructure Layer** (`internal/infra/`) - PostgreSQL repositories, external clients, task queue
+- **API Layer** (`internal/api/`) - HTTP handlers using Gin framework, authentication middleware
