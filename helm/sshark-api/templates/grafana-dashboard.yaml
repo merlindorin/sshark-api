@@ -16,365 +16,656 @@ spec:
   {{- end }}
   json: |
     {
-      "title": "SSHark API Overview",
+      "title": "SSHark API - Production Overview",
       "uid": "sshark-api-overview",
-      "tags": ["sshark", "api"],
+      "tags": ["sshark", "production", "api"],
       "timezone": "browser",
-      "schemaVersion": 38,
-      "version": 1,
+      "schemaVersion": 39,
+      "version": 2,
       "refresh": "30s",
       "time": {
-        "from": "now-1h",
+        "from": "now-6h",
         "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {
+              "selected": false,
+              "text": "Prometheus",
+              "value": "prometheus"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "refresh": 1
+          }
+        ]
       },
       "panels": [
         {
           "id": 1,
-          "title": "Request Rate",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
+          "title": "Traffic (req/s)",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+          "description": "Total requests per second across all endpoints",
           "targets": [
             {
               "expr": "sum(rate(api_requests_total[$__rate_interval]))",
-              "legendFormat": "Total Requests/sec",
               "refId": "A"
             }
           ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "reqps"
+          "options": {
+            "graphMode": "area",
+            "colorMode": "value",
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"]
             }
           },
-          "yaxes": [
-            {"format": "reqps", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "green"},
+                  {"value": 100, "color": "yellow"},
+                  {"value": 500, "color": "red"}
+                ]
+              }
+            }
+          }
         },
         {
           "id": 2,
-          "title": "Auth Success Rate",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
+          "title": "Errors (%)",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+          "description": "Percentage of requests returning 5xx errors",
           "targets": [
             {
-              "expr": "sum(rate(api_auth_attempts_total{result=\"success\"}[$__rate_interval])) / sum(rate(api_auth_attempts_total[$__rate_interval]))",
-              "legendFormat": "Success Rate",
+              "expr": "(sum(rate(api_requests_total{status=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(api_requests_total[$__rate_interval])) * 100",
               "refId": "A"
             }
           ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percentunit",
-              "min": 0,
-              "max": 1
+          "options": {
+            "graphMode": "area",
+            "colorMode": "value",
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"]
             }
           },
-          "yaxes": [
-            {"format": "percentunit", "logBase": 1, "min": 0, "max": 1, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 2,
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "green"},
+                  {"value": 0.1, "color": "yellow"},
+                  {"value": 1, "color": "red"}
+                ]
+              }
+            }
+          }
         },
         {
           "id": 3,
-          "title": "Database Connections",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
+          "title": "Latency p95 (ms)",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+          "description": "95th percentile response time in milliseconds",
           "targets": [
             {
-              "expr": "db_connections_active",
-              "legendFormat": "Active",
+              "expr": "histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[$__rate_interval])) by (le)) * 1000",
               "refId": "A"
-            },
-            {
-              "expr": "db_connections_idle",
-              "legendFormat": "Idle",
-              "refId": "B"
             }
           ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short"
+          "options": {
+            "graphMode": "area",
+            "colorMode": "value",
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"]
             }
           },
-          "yaxes": [
-            {"format": "short", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "decimals": 0,
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "green"},
+                  {"value": 100, "color": "yellow"},
+                  {"value": 500, "color": "red"}
+                ]
+              }
+            }
+          }
         },
         {
           "id": 4,
-          "title": "Job Queue Status",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
+          "title": "DB Pool Saturation",
+          "type": "gauge",
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+          "description": "Database connection pool utilization percentage",
           "targets": [
             {
-              "expr": "job_queue_depth",
-              "legendFormat": "Queue Depth",
+              "expr": "db_connections_active / (db_connections_active + db_connections_idle) * 100",
               "refId": "A"
+            }
+          ],
+          "options": {
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"]
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "green"},
+                  {"value": 70, "color": "yellow"},
+                  {"value": 90, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 100,
+          "title": "HTTP Health",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6},
+          "collapsed": true,
+          "panels": [
+            {
+              "id": 101,
+              "title": "Requests by Status",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "sum by (status) (rate(api_requests_total[$__rate_interval]))",
+                  "legendFormat": "{{`{{status}}`}}",
+                  "refId": "A"
+                }
+              ],
+              "options": {
+                "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "last"]},
+                "tooltip": {"mode": "multi", "sort": "desc"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "custom": {
+                    "drawStyle": "line",
+                    "lineInterpolation": "smooth",
+                    "fillOpacity": 20,
+                    "stacking": {"mode": "normal"}
+                  },
+                  "color": {"mode": "palette-classic"}
+                },
+                "overrides": [
+                  {"matcher": {"id": "byRegexp", "options": "2.."}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]},
+                  {"matcher": {"id": "byRegexp", "options": "4.."}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]},
+                  {"matcher": {"id": "byRegexp", "options": "5.."}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}
+                ]
+              }
             },
             {
-              "expr": "job_workers_active",
-              "legendFormat": "Active Workers",
-              "refId": "B"
+              "id": 102,
+              "title": "Latency Percentiles",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {"expr": "histogram_quantile(0.50, sum(rate(api_request_duration_seconds_bucket[$__rate_interval])) by (le)) * 1000", "legendFormat": "p50", "refId": "A"},
+                {"expr": "histogram_quantile(0.90, sum(rate(api_request_duration_seconds_bucket[$__rate_interval])) by (le)) * 1000", "legendFormat": "p90", "refId": "B"},
+                {"expr": "histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[$__rate_interval])) by (le)) * 1000", "legendFormat": "p95", "refId": "C"},
+                {"expr": "histogram_quantile(0.99, sum(rate(api_request_duration_seconds_bucket[$__rate_interval])) by (le)) * 1000", "legendFormat": "p99", "refId": "D"}
+              ],
+              "options": {
+                "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+                "tooltip": {"mode": "multi", "sort": "none"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "ms",
+                  "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10},
+                  "color": {"mode": "palette-classic"}
+                }
+              }
             },
             {
-              "expr": "job_workers_total",
-              "legendFormat": "Total Workers",
-              "refId": "C"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short"
-            }
-          },
-          "yaxes": [
-            {"format": "short", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
-        },
-        {
-          "id": 5,
-          "title": "Request Rate by Endpoint",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
-            {
-              "expr": "sum by (endpoint, method) (rate(api_requests_total[$__rate_interval]))",
-              "legendFormat": "{{`{{method}}`}} {{`{{endpoint}}`}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "reqps"
-            }
-          },
-          "yaxes": [
-            {"format": "reqps", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
-        },
-        {
-          "id": 6,
-          "title": "Response Time (p50, p95, p99)",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.50, sum by (le) (rate(api_request_duration_seconds_bucket[$__rate_interval])))",
-              "legendFormat": "p50",
-              "refId": "A"
+              "id": 103,
+              "title": "Top Endpoints by Request Rate",
+              "type": "bargauge",
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "topk(10, sum by (endpoint, method) (rate(api_requests_total[$__rate_interval])))",
+                  "legendFormat": "{{`{{method}} {{endpoint}}`}}",
+                  "refId": "A",
+                  "instant": true
+                }
+              ],
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "gradient",
+                "showUnfilled": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "color": {"mode": "continuous-GrYlRd"},
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [{"value": null, "color": "green"}]
+                  }
+                }
+              }
             },
             {
-              "expr": "histogram_quantile(0.95, sum by (le) (rate(api_request_duration_seconds_bucket[$__rate_interval])))",
-              "legendFormat": "p95",
-              "refId": "B"
+              "id": 104,
+              "title": "Slowest Endpoints (p95 latency)",
+              "type": "table",
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "topk(10, histogram_quantile(0.95, sum by (le, endpoint, method) (rate(api_request_duration_seconds_bucket[$__rate_interval]))) * 1000)",
+                  "legendFormat": "{{`{{method}} {{endpoint}}`}}",
+                  "refId": "A",
+                  "instant": true,
+                  "format": "table"
+                }
+              ],
+              "options": {
+                "showHeader": true,
+                "sortBy": [{"displayName": "Value", "desc": true}]
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {"align": "auto", "filterable": true},
+                  "unit": "ms"
+                },
+                "overrides": [
+                  {"matcher": {"id": "byName", "options": "endpoint"}, "properties": [{"id": "custom.width", "value": 300}]},
+                  {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "p95 Latency (ms)"}, {"id": "custom.width", "value": 150}]}
+                ]
+              },
+              "transformations": [
+                {"id": "organize", "options": {"excludeByName": {"Time": true, "le": true}, "indexByName": {}, "renameByName": {}}}
+              ]
+            }
+          ]
+        },
+        {
+          "id": 200,
+          "title": "Authentication",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
+          "collapsed": true,
+          "panels": [
+            {
+              "id": 201,
+              "title": "Auth Success Rate",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "sum(rate(api_auth_attempts_total{result=\"success\"}[$__rate_interval])) / sum(rate(api_auth_attempts_total[$__rate_interval])) * 100",
+                  "legendFormat": "Success Rate %",
+                  "refId": "A"
+                }
+              ],
+              "options": {
+                "legend": {"displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "single"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100,
+                  "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20},
+                  "color": {"mode": "thresholds"},
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"value": null, "color": "red"},
+                      {"value": 80, "color": "yellow"},
+                      {"value": 95, "color": "green"}
+                    ]
+                  }
+                }
+              }
             },
             {
-              "expr": "histogram_quantile(0.99, sum by (le) (rate(api_request_duration_seconds_bucket[$__rate_interval])))",
-              "legendFormat": "p99",
-              "refId": "C"
+              "id": 202,
+              "title": "Auth Attempts (Success vs Failed)",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {"expr": "sum by (result) (rate(api_auth_attempts_total[$__rate_interval]))", "legendFormat": "{{`{{result}}`}}", "refId": "A"}
+              ],
+              "options": {
+                "legend": {"displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi", "sort": "desc"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "ops",
+                  "custom": {"drawStyle": "bars", "fillOpacity": 80, "stacking": {"mode": "normal"}},
+                  "color": {"mode": "palette-classic"}
+                },
+                "overrides": [
+                  {"matcher": {"id": "byName", "options": "success"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]},
+                  {"matcher": {"id": "byName", "options": "failure"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}
+                ]
+              }
             }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s"
-            }
-          },
-          "yaxes": [
-            {"format": "s", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
           ]
         },
         {
-          "id": 7,
-          "title": "Request Rate by Status Code",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
+          "id": 300,
+          "title": "Database Health",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8},
+          "collapsed": true,
+          "panels": [
             {
-              "expr": "sum by (status) (rate(api_requests_total[$__rate_interval]))",
-              "legendFormat": "{{`{{status}}`}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "reqps"
-            }
-          },
-          "yaxes": [
-            {"format": "reqps", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
-        },
-        {
-          "id": 8,
-          "title": "DB Connection Wait Time (p50, p95)",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.50, sum by (le) (rate(db_connection_wait_time_seconds_bucket[$__rate_interval])))",
-              "legendFormat": "p50",
-              "refId": "A"
+              "id": 301,
+              "title": "Connection Pool (Active/Idle)",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {"expr": "db_connections_active", "legendFormat": "Active", "refId": "A"},
+                {"expr": "db_connections_idle", "legendFormat": "Idle", "refId": "B"}
+              ],
+              "options": {
+                "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "last", "max"]},
+                "tooltip": {"mode": "multi"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20, "stacking": {"mode": "normal"}},
+                  "color": {"mode": "palette-classic"}
+                },
+                "overrides": [
+                  {"matcher": {"id": "byName", "options": "Active"}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]},
+                  {"matcher": {"id": "byName", "options": "Idle"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}
+                ]
+              }
             },
             {
-              "expr": "histogram_quantile(0.95, sum by (le) (rate(db_connection_wait_time_seconds_bucket[$__rate_interval])))",
-              "legendFormat": "p95",
-              "refId": "B"
+              "id": 302,
+              "title": "Connection Wait Time Heatmap",
+              "type": "heatmap",
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 9},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "sum(increase(db_connection_wait_time_seconds_bucket[$__rate_interval])) by (le)",
+                  "legendFormat": "{{`{{le}}`}}",
+                  "refId": "A",
+                  "format": "heatmap"
+                }
+              ],
+              "options": {
+                "calculate": false,
+                "cellGap": 2,
+                "color": {"mode": "scheme", "scheme": "Spectral", "exponent": 0.5},
+                "yAxis": {"unit": "s", "decimals": 0}
+              },
+              "fieldConfig": {
+                "defaults": {}
+              }
             }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s"
-            }
-          },
-          "yaxes": [
-            {"format": "s", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
           ]
         },
         {
-          "id": 9,
-          "title": "Scraping Request Rate",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
+          "id": 400,
+          "title": "Background Jobs",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 9},
+          "collapsed": true,
+          "panels": [
             {
-              "expr": "sum by (provider, status) (rate(scraping_requests_total[$__rate_interval]))",
-              "legendFormat": "{{`{{provider}}`}} - {{`{{status}}`}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "reqps"
-            }
-          },
-          "yaxes": [
-            {"format": "reqps", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
-        },
-        {
-          "id": 10,
-          "title": "Scraping Duration by Provider",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.50, sum by (le, provider) (rate(scraping_duration_seconds_bucket[$__rate_interval])))",
-              "legendFormat": "{{`{{provider}}`}} p50",
-              "refId": "A"
+              "id": 401,
+              "title": "Queue Depth",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {"expr": "job_queue_depth", "legendFormat": "Pending Jobs", "refId": "A"}
+              ],
+              "options": {
+                "legend": {"displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "single"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20},
+                  "color": {"mode": "thresholds"},
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"value": null, "color": "green"},
+                      {"value": 10, "color": "yellow"},
+                      {"value": 50, "color": "red"}
+                    ]
+                  }
+                }
+              }
             },
             {
-              "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(scraping_duration_seconds_bucket[$__rate_interval])))",
-              "legendFormat": "{{`{{provider}}`}} p95",
-              "refId": "B"
+              "id": 402,
+              "title": "Worker Utilization",
+              "type": "gauge",
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {"expr": "job_workers_active / job_workers_total * 100", "refId": "A"}
+              ],
+              "options": {
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true,
+                "reduceOptions": {"values": false, "calcs": ["lastNotNull"]}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100,
+                  "color": {"mode": "thresholds"},
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"value": null, "color": "green"},
+                      {"value": 70, "color": "yellow"},
+                      {"value": 90, "color": "red"}
+                    ]
+                  }
+                }
+              }
             }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s"
-            }
-          },
-          "yaxes": [
-            {"format": "s", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
           ]
         },
         {
-          "id": 11,
-          "title": "Keys Discovered Rate",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
+          "id": 500,
+          "title": "SSH Key Scraping",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 10},
+          "collapsed": true,
+          "panels": [
             {
-              "expr": "sum by (provider) (rate(scraping_keys_discovered_total[$__rate_interval]))",
-              "legendFormat": "{{`{{provider}}`}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "keys/s"
-            }
-          },
-          "yaxes": [
-            {"format": "ops", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
-          ]
-        },
-        {
-          "id": 12,
-          "title": "User Operations",
-          "type": "graph",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
-          "datasource": {
-            "type": "prometheus",
-            "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"
-          },
-          "targets": [
+              "id": 501,
+              "title": "Keys Discovered per Hour",
+              "type": "barchart",
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 11},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "sum by (provider) (increase(scraping_keys_discovered_total[1h]))",
+                  "legendFormat": "{{`{{provider}}`}}",
+                  "refId": "A"
+                }
+              ],
+              "options": {
+                "legend": {"displayMode": "list", "placement": "bottom"},
+                "orientation": "horizontal",
+                "xTickLabelRotation": 0
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {"mode": "palette-classic"}
+                }
+              }
+            },
             {
-              "expr": "sum by (operation_type) (rate(api_user_operations_total[$__rate_interval]))",
-              "legendFormat": "{{`{{operation_type}}`}}",
-              "refId": "A"
+              "id": 502,
+              "title": "Scraping Duration by Provider",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 11},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {"expr": "histogram_quantile(0.50, sum by (le, provider) (rate(scraping_duration_seconds_bucket[$__rate_interval]))) * 1000", "legendFormat": "{{`{{provider}} p50`}}", "refId": "A"},
+                {"expr": "histogram_quantile(0.95, sum by (le, provider) (rate(scraping_duration_seconds_bucket[$__rate_interval]))) * 1000", "legendFormat": "{{`{{provider}} p95`}}", "refId": "B"}
+              ],
+              "options": {
+                "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+                "tooltip": {"mode": "multi"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "ms",
+                  "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10},
+                  "color": {"mode": "palette-classic"}
+                }
+              }
+            },
+            {
+              "id": 503,
+              "title": "Scrape Success Rate by Provider",
+              "type": "timeseries",
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 19},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "sum by (provider) (rate(scraping_requests_total{status=\"success\"}[$__rate_interval])) / sum by (provider) (rate(scraping_requests_total[$__rate_interval])) * 100",
+                  "legendFormat": "{{`{{provider}}`}}",
+                  "refId": "A"
+                }
+              ],
+              "options": {
+                "legend": {"displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi"}
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "percent",
+                  "min": 0,
+                  "max": 100,
+                  "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20},
+                  "color": {"mode": "thresholds"},
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"value": null, "color": "red"},
+                      {"value": 80, "color": "yellow"},
+                      {"value": 95, "color": "green"}
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "id": 504,
+              "title": "Provider Status",
+              "type": "table",
+              "gridPos": {"h": 8, "w": 12, "x": 12, "y": 19},
+              "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "targets": [
+                {
+                  "expr": "sum by (provider) (rate(scraping_requests_total[$__rate_interval]))",
+                  "legendFormat": "{{`{{provider}}`}}",
+                  "refId": "A",
+                  "instant": true,
+                  "format": "table"
+                },
+                {
+                  "expr": "sum by (provider) (rate(scraping_keys_discovered_total[$__rate_interval])) * 3600",
+                  "legendFormat": "{{`{{provider}}`}}",
+                  "refId": "B",
+                  "instant": true,
+                  "format": "table"
+                },
+                {
+                  "expr": "sum by (provider) (rate(scraping_requests_total{status=\"success\"}[$__rate_interval])) / sum by (provider) (rate(scraping_requests_total[$__rate_interval])) * 100",
+                  "legendFormat": "{{`{{provider}}`}}",
+                  "refId": "C",
+                  "instant": true,
+                  "format": "table"
+                }
+              ],
+              "options": {
+                "showHeader": true,
+                "sortBy": [{"displayName": "Success Rate", "desc": true}]
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {"align": "auto"}
+                },
+                "overrides": [
+                  {"matcher": {"id": "byName", "options": "provider"}, "properties": [{"id": "displayName", "value": "Provider"}, {"id": "custom.width", "value": 150}]},
+                  {"matcher": {"id": "byFrameRefID", "options": "A"}, "properties": [{"id": "displayName", "value": "Scrape Rate"}, {"id": "unit", "value": "reqps"}, {"id": "decimals", "value": 2}]},
+                  {"matcher": {"id": "byFrameRefID", "options": "B"}, "properties": [{"id": "displayName", "value": "Keys/Hour"}, {"id": "unit", "value": "short"}, {"id": "decimals", "value": 0}]},
+                  {"matcher": {"id": "byFrameRefID", "options": "C"}, "properties": [{"id": "displayName", "value": "Success Rate"}, {"id": "unit", "value": "percent"}, {"id": "decimals", "value": 1}]}
+                ]
+              },
+              "transformations": [
+                {"id": "merge", "options": {}},
+                {"id": "organize", "options": {"excludeByName": {"Time": true}, "indexByName": {}, "renameByName": {}}}
+              ]
             }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "ops"
-            }
-          },
-          "yaxes": [
-            {"format": "ops", "logBase": 1, "min": 0, "show": true},
-            {"format": "short", "logBase": 1, "show": true}
           ]
         }
       ]
