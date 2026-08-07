@@ -17,6 +17,9 @@
   * [Configuration](#configuration)
 * [API](#api)
   * [Search Query Syntax](#search-query-syntax)
+  * [Authentication](#authentication)
+  * [Profile Management](#profile-management)
+  * [Background Tasks](#background-tasks)
 * [Development](#development)
   * [Running Tests](#running-tests)
   * [Building](#building)
@@ -28,6 +31,10 @@
 - Fetch SSH and GPG public keys from GitHub and GitLab users
 - Full-text search across keys using PostgreSQL
 - RESTful JSON API
+- User profiles with customizable usernames
+- Background task queue for key refresh and revocation
+- Automated daily profile refresh
+- Verified key badges for SShark account owners
 - Health check endpoints for Kubernetes deployments
 
 ## Requirements
@@ -147,6 +154,78 @@ curl "http://localhost:8080/api/v1/ssh/search?q=@source.username:{linus*}%26(@so
 | `source.provider`  | Provider (github, gitlab)      |
 | `source.user_id`   | User ID from provider          |
 | `source.uri`       | Source URI                     |
+
+### Authentication
+
+SShark uses Clerk for authentication. Authenticated endpoints require a valid JWT token in the `Authorization` header:
+
+```bash
+Authorization: Bearer <clerk-jwt-token>
+```
+
+Configure the Clerk secret key:
+
+```bash
+CLERK_SECRET_KEY=sk_live_your_secret_key go run ./cmd serve
+```
+
+### Profile Management
+
+Authenticated users can manage their SShark profile and keys:
+
+```bash
+# Get current user profile
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/me
+
+# Set or update username
+curl -X POST -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"myusername"}' \
+  http://localhost:8080/api/v1/me/username
+
+# List user's keys across all connected providers
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/me/keys
+
+# Refresh keys from connected providers
+curl -X POST -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/v1/me/keys/refresh
+
+# Revoke a specific key (deletes from provider and SShark)
+curl -X DELETE -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/v1/me/keys/{key-id}
+
+# Get public profile by username
+curl http://localhost:8080/api/v1/users/{username}
+```
+
+Users can connect multiple provider accounts (GitHub, GitLab) through Clerk's OAuth integration. Keys from connected accounts are automatically associated with the user's profile.
+
+### Background Tasks
+
+Key refresh and revocation operations run as background tasks. These operations return a `202 Accepted` response with a task ID:
+
+```bash
+# Refresh returns a task
+curl -X POST -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/v1/me/keys/refresh
+# Response: {"id": "task-uuid", "type": "refresh", "status": "pending", ...}
+
+# Check task status
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/v1/tasks/{task-id}
+
+# List all tasks for the current user
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/v1/tasks
+```
+
+Task statuses:
+- `pending` - Queued but not started
+- `running` - Currently processing
+- `completed` - Successfully finished
+- `failed` - Encountered an error
+
+Tasks use River (a PostgreSQL-based job queue) for reliable background processing. Failed tasks are automatically retried with exponential backoff. A daily automated refresh runs for all profiles to keep keys up to date.
 
 ## Development
 
