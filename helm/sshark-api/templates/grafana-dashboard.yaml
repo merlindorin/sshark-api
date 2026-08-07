@@ -21,7 +21,7 @@ spec:
       "tags": ["sshark", "production", "api"],
       "timezone": "browser",
       "schemaVersion": 39,
-      "version": 5,
+      "version": 6,
       "refresh": "30s",
       "time": {
         "from": "now-6h",
@@ -172,77 +172,44 @@ spec:
         {
           "id": 4,
           "title": "Database Pool",
-          "type": "stat",
+          "type": "timeseries",
           "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
           "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
-          "description": "Database connection pool status",
+          "description": "Database connection pool - active and idle connections",
           "targets": [
             {
               "expr": "db_connections_active",
               "legendFormat": "Active",
-              "refId": "A",
-              "instant": true,
-              "format": "time_series"
+              "refId": "A"
             },
             {
               "expr": "db_connections_idle",
               "legendFormat": "Idle",
-              "refId": "B",
-              "instant": true,
-              "format": "time_series"
-            },
-            {
-              "expr": "db_connections_active + db_connections_idle",
-              "legendFormat": "Total",
-              "refId": "C",
-              "instant": true,
-              "format": "time_series"
+              "refId": "B"
             }
           ],
           "options": {
-            "graphMode": "none",
-            "colorMode": "value",
-            "orientation": "horizontal",
-            "textMode": "value_and_name",
-            "reduceOptions": {
-              "values": false,
-              "calcs": ["lastNotNull"]
-            }
+            "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["last"]},
+            "tooltip": {"mode": "multi"}
           },
           "fieldConfig": {
             "defaults": {
               "unit": "short",
               "decimals": 0,
-              "color": {"mode": "fixed", "fixedColor": "blue"}
+              "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20, "stacking": {"mode": "normal"}},
+              "color": {"mode": "palette-classic"}
             },
             "overrides": [
               {
                 "matcher": {"id": "byName", "options": "Active"},
                 "properties": [
-                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}},
-                  {"id": "displayName", "value": "Active"}
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}
                 ]
               },
               {
                 "matcher": {"id": "byName", "options": "Idle"},
                 "properties": [
-                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}},
-                  {"id": "displayName", "value": "Idle"}
-                ]
-              },
-              {
-                "matcher": {"id": "byName", "options": "Total"},
-                "properties": [
-                  {"id": "color", "value": {"mode": "thresholds"}},
-                  {"id": "displayName", "value": "Total"},
-                  {"id": "thresholds", "value": {
-                    "mode": "absolute",
-                    "steps": [
-                      {"value": null, "color": "green"},
-                      {"value": 35, "color": "yellow"},
-                      {"value": 45, "color": "red"}
-                    ]
-                  }}
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
                 ]
               }
             ]
@@ -336,7 +303,6 @@ spec:
               "fieldConfig": {
                 "defaults": {
                   "unit": "reqps",
-                  "displayName": "Requests/sec",
                   "color": {"mode": "continuous-GrYlRd"},
                   "thresholds": {
                     "mode": "absolute",
@@ -533,7 +499,6 @@ spec:
               "fieldConfig": {
                 "defaults": {
                   "unit": "short",
-                  "displayName": "Jobs",
                   "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20},
                   "color": {"mode": "thresholds"},
                   "thresholds": {
@@ -550,30 +515,28 @@ spec:
             {
               "id": 402,
               "title": "Worker Status",
-              "type": "stat",
+              "type": "timeseries",
               "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
               "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
+              "description": "Background job workers - active and idle",
               "targets": [
-                {"expr": "job_workers_active", "legendFormat": "Active", "refId": "A", "instant": true, "format": "time_series"},
-                {"expr": "job_workers_total - job_workers_active", "legendFormat": "Idle", "refId": "B", "instant": true, "format": "time_series"},
-                {"expr": "job_workers_total", "legendFormat": "Total", "refId": "C", "instant": true, "format": "time_series"}
+                {"expr": "job_workers_active", "legendFormat": "Active Workers", "refId": "A"},
+                {"expr": "job_workers_total - job_workers_active", "legendFormat": "Idle Workers", "refId": "B"}
               ],
               "options": {
-                "graphMode": "none",
-                "colorMode": "value",
-                "orientation": "horizontal",
-                "textMode": "value_and_name",
-                "reduceOptions": {"values": false, "calcs": ["lastNotNull"]}
+                "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["last"]},
+                "tooltip": {"mode": "multi"}
               },
               "fieldConfig": {
                 "defaults": {
                   "unit": "short",
-                  "decimals": 0
+                  "decimals": 0,
+                  "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20, "stacking": {"mode": "normal"}},
+                  "color": {"mode": "palette-classic"}
                 },
                 "overrides": [
-                  {"matcher": {"id": "byName", "options": "Active"}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}, {"id": "displayName", "value": "Active Workers"}]},
-                  {"matcher": {"id": "byName", "options": "Idle"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}, {"id": "displayName", "value": "Idle Workers"}]},
-                  {"matcher": {"id": "byName", "options": "Total"}, "properties": [{"id": "color", "value": {"fixedColor": "text", "mode": "fixed"}}, {"id": "displayName", "value": "Total Workers"}]}
+                  {"matcher": {"id": "byName", "options": "Active Workers"}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]},
+                  {"matcher": {"id": "byName", "options": "Idle Workers"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}
                 ]
               }
             }
