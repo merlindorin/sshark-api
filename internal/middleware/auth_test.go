@@ -15,7 +15,7 @@ import (
 func newRouter(clerkConfigured bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/protected", middleware.RequireAuth(clerkConfigured), func(c *gin.Context) {
+	router.GET("/protected", middleware.RequireAuth(clerkConfigured, nil), func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 
