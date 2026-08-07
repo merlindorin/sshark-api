@@ -21,7 +21,7 @@ spec:
       "tags": ["sshark", "production", "api"],
       "timezone": "browser",
       "schemaVersion": 39,
-      "version": 3,
+      "version": 4,
       "refresh": "30s",
       "time": {
         "from": "now-6h",
@@ -180,23 +180,26 @@ spec:
             {
               "expr": "db_connections_active",
               "legendFormat": "Active",
-              "refId": "A"
+              "refId": "A",
+              "instant": true
             },
             {
               "expr": "db_connections_idle",
               "legendFormat": "Idle",
-              "refId": "B"
+              "refId": "B",
+              "instant": true
             },
             {
               "expr": "db_connections_active + db_connections_idle",
               "legendFormat": "Total",
-              "refId": "C"
+              "refId": "C",
+              "instant": true
             }
           ],
           "options": {
             "graphMode": "none",
             "colorMode": "value",
-            "orientation": "auto",
+            "orientation": "horizontal",
             "textMode": "value_and_name",
             "reduceOptions": {
               "values": false,
