@@ -21,7 +21,7 @@ spec:
       "tags": ["sshark", "production", "api"],
       "timezone": "browser",
       "schemaVersion": 39,
-      "version": 4,
+      "version": 5,
       "refresh": "30s",
       "time": {
         "from": "now-6h",
@@ -181,19 +181,22 @@ spec:
               "expr": "db_connections_active",
               "legendFormat": "Active",
               "refId": "A",
-              "instant": true
+              "instant": true,
+              "format": "time_series"
             },
             {
               "expr": "db_connections_idle",
               "legendFormat": "Idle",
               "refId": "B",
-              "instant": true
+              "instant": true,
+              "format": "time_series"
             },
             {
               "expr": "db_connections_active + db_connections_idle",
               "legendFormat": "Total",
               "refId": "C",
-              "instant": true
+              "instant": true,
+              "format": "time_series"
             }
           ],
           "options": {
@@ -551,14 +554,14 @@ spec:
               "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
               "datasource": {"type": "prometheus", "uid": "{{ .Values.grafana.dashboard.datasourceUID }}"},
               "targets": [
-                {"expr": "job_workers_active", "legendFormat": "Active", "refId": "A"},
-                {"expr": "job_workers_total - job_workers_active", "legendFormat": "Idle", "refId": "B"},
-                {"expr": "job_workers_total", "legendFormat": "Total", "refId": "C"}
+                {"expr": "job_workers_active", "legendFormat": "Active", "refId": "A", "instant": true, "format": "time_series"},
+                {"expr": "job_workers_total - job_workers_active", "legendFormat": "Idle", "refId": "B", "instant": true, "format": "time_series"},
+                {"expr": "job_workers_total", "legendFormat": "Total", "refId": "C", "instant": true, "format": "time_series"}
               ],
               "options": {
                 "graphMode": "none",
                 "colorMode": "value",
-                "orientation": "auto",
+                "orientation": "horizontal",
                 "textMode": "value_and_name",
                 "reduceOptions": {"values": false, "calcs": ["lastNotNull"]}
               },
