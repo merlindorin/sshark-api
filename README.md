@@ -266,7 +266,7 @@ The service exports OpenTelemetry metrics for:
 
 ### Grafana Dashboard
 
-A pre-built dashboard is included at `grafana/dashboard.json` with panels for:
+A pre-built dashboard is included at `grafana/dashboards/sshark-overview.json` with panels for:
 
 - Request throughput and P95 latency
 - Error rates by endpoint
