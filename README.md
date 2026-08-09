@@ -135,6 +135,8 @@ Claim or change your username (must be unique and not reserved).
 
 The API supports two search modes: **basic** and **advanced**.
 
+Search queries are optimized with database indexes for username lookups and result ordering, providing sub-second response times even on databases with hundreds of thousands of keys.
+
 #### Basic Mode
 
 Use `query` and `fields` parameters for simple OR searches:
@@ -247,7 +249,7 @@ docker run -p 8080:8080 \
 
 The API uses a persistent queue backed by PostgreSQL to handle long-running operations:
 
-- **Profile refresh** — Scheduled daily re-fetch of keys for active profiles
+- **Scheduled profile refresh** — All user profiles are automatically refreshed once daily to keep keys in sync with connected providers. Each profile refresh runs as an independent background job that appears in the user's Activity table, retries on failure, and won't conflict with manual refreshes.
 - **On-demand refresh** — User-triggered key updates via `/api/v1/me/keys/refresh`
 - **Key revocation** — Delete keys at the provider before removing locally
 
