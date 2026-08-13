@@ -81,6 +81,24 @@ curl -H "Authorization: Bearer $CLERK_TOKEN" \
   http://localhost:8080/api/v1/me/keys
 ```
 
+### Health Check Endpoints
+
+#### GET /liveness
+
+Kubernetes liveness probe. Returns 200 if the service is running.
+
+```bash
+curl http://localhost:8080/liveness
+```
+
+#### GET /readiness
+
+Kubernetes readiness probe. Returns 200 if the service can handle traffic (database connection is healthy).
+
+```bash
+curl http://localhost:8080/readiness
+```
+
 ### Public Endpoints
 
 #### GET /users/{username}
@@ -130,6 +148,75 @@ Retrieve your claimed username.
 #### PUT /api/v1/me/username
 
 Claim or change your username (must be unique and not reserved).
+
+#### GET /api/v1/me/username/available
+
+Check if a username is available before claiming it:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  "http://localhost:8080/api/v1/me/username/available?username=desiredname"
+```
+
+#### GET /api/v1/me
+
+Get your complete profile information including connected providers and verification status.
+
+#### DELETE /api/v1/me/profile
+
+Permanently delete your profile and all associated data. This action cannot be undone.
+
+#### GET /api/v1/me/tasks
+
+List all background tasks (key refresh, revocation) associated with your account:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/tasks
+```
+
+#### GET /api/v1/me/tasks/{id}
+
+Get detailed status of a specific background task.
+
+#### GET /api/v1/me/apikeys
+
+List API keys for programmatic access:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/apikeys
+```
+
+#### POST /api/v1/me/apikeys
+
+Create a new API key for automation. The key is only shown once during creation.
+
+#### DELETE /api/v1/me/apikeys/{id}
+
+Revoke an API key. All requests using this key will immediately fail.
+
+### Public Endpoints (Additional)
+
+#### GET /api/v1/publickeys/{id}
+
+Retrieve a specific public key by its UUID.
+
+#### GET /api/v1/sources
+
+List all indexed sources (users and their providers).
+
+#### GET /api/v1/sources/{provider}/{username}
+
+Get information about a specific source:
+
+```bash
+curl http://localhost:8080/api/v1/sources/github/torvalds
+```
+
+#### GET /api/v1/stats
+
+Get platform statistics including total keys, users, and providers indexed.
 
 ### Search Query Syntax
 
