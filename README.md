@@ -57,59 +57,117 @@ POSTGRES_HOST=db.example.com POSTGRES_USER=myuser POSTGRES_PASSWORD=secret go ru
 
 Configuration can be set via CLI flags or environment variables.
 
-| Flag               | Environment          | Default     | Description               |
-|--------------------|----------------------|-------------|---------------------------|
-| `--host`           | `HOST`               | `0.0.0.0`   | Host to bind the server   |
-| `--port`           | `PORT`               | `8080`      | Port to bind the server   |
-| `--timeout`        | -                    | `5s`        | HTTP request timeout      |
-| -                  | `POSTGRES_HOST`      | `localhost` | PostgreSQL host           |
-| -                  | `POSTGRES_PORT`      | `5432`      | PostgreSQL port           |
-| -                  | `POSTGRES_USER`      | `postgres`  | PostgreSQL user           |
-| -                  | `POSTGRES_PASSWORD`  | -           | PostgreSQL password       |
-| -                  | `POSTGRES_DATABASE`  | `sshark`    | PostgreSQL database       |
-| -                  | `POSTGRES_SSL_MODE`  | `disable`   | PostgreSQL SSL mode       |
-| -                  | `CLERK_SECRET_KEY`   | -           | Clerk authentication key  |
+#### Server Configuration
+
+| Flag               | Environment              | Default     | Description                    |
+|--------------------|--------------------------|-------------|--------------------------------|
+| `--host`           | `HTTP_HOST`              | `0.0.0.0`   | Host to bind the server        |
+| `--port`           | `HTTP_PORT`              | `8080`      | Port to bind the server        |
+| -                  | `HTTP_READ_TIMEOUT`      | `15s`       | HTTP read timeout              |
+| -                  | `HTTP_WRITE_TIMEOUT`     | `15s`       | HTTP write timeout             |
+| -                  | `HTTP_IDLE_TIMEOUT`      | `60s`       | HTTP idle timeout              |
+| -                  | `HTTP_GRACEFUL_PERIOD`   | `30s`       | Graceful shutdown period       |
+
+#### Database Configuration
+
+| Environment          | Default     | Description               |
+|----------------------|-------------|---------------------------|
+| `POSTGRES_HOST`      | `localhost` | PostgreSQL host           |
+| `POSTGRES_PORT`      | `5432`      | PostgreSQL port           |
+| `POSTGRES_USER`      | `postgres`  | PostgreSQL user           |
+| `POSTGRES_PASSWORD`  | -           | PostgreSQL password       |
+| `POSTGRES_DATABASE`  | `sshark`    | PostgreSQL database       |
+| `POSTGRES_SSL_MODE`  | `disable`   | PostgreSQL SSL mode       |
+
+#### Authentication & Provider Configuration
+
+| Environment        | Required | Description                                    |
+|--------------------|----------|------------------------------------------------|
+| `CLERK_TOKEN`      | Yes      | Clerk authentication key (auth endpoints)      |
+| `GITHUB_TOKEN`     | Optional | GitHub token for on-demand key refresh         |
+| `GITLAB_TOKEN`     | Optional | GitLab token for on-demand key refresh         |
+
+**Note:** Without `CLERK_TOKEN`, all authenticated endpoints return 503 Service Unavailable. Provider tokens enable on-demand key refresh from those platforms.
 
 ## API
 
 ### Authentication
 
-Protected endpoints require a bearer token from Clerk:
+Protected endpoints support two authentication methods:
+
+#### Session Tokens
+
+Use a bearer token from Clerk (obtained via OAuth login):
 
 ```bash
-curl -H "Authorization: Bearer $CLERK_TOKEN" \
+curl -H "Authorization: Bearer $CLERK_SESSION_TOKEN" \
   http://localhost:8080/api/v1/me/keys
 ```
 
+#### API Keys
+
+Create an API key via `POST /api/v1/me/apikeys` (requires session token), then use the returned key (format `ak_*`):
+
+```bash
+curl -H "Authorization: Bearer ak_3beecc9c60adb5f9b850e91a8ee1e992" \
+  http://localhost:8080/api/v1/me/keys
+```
+
+API keys are permanent until revoked and are useful for CLI tools and scripts.
+
 ### Public Endpoints
 
-#### GET /users/{username}
+#### GET /api/v1/users/{username}
 
 Retrieve a public user profile:
 
 ```bash
-curl http://localhost:8080/users/merlindorin
+curl http://localhost:8080/api/v1/users/merlindorin
 ```
 
 Returns connected accounts and published keys.
 
-#### GET /users/{username}.keys
+#### GET /api/v1/publickeys/{id}
 
-Download SSH public keys in `authorized_keys` format:
-
-```bash
-curl http://localhost:8080/users/merlindorin.keys >> ~/.ssh/authorized_keys
-```
-
-#### GET /users/{username}.gpg
-
-Download GPG public keys in ASCII armor format:
+Retrieve a specific public key by its UUID:
 
 ```bash
-curl http://localhost:8080/users/merlindorin.gpg | gpg --import
+curl http://localhost:8080/api/v1/publickeys/12345678-1234-1234-1234-123456789abc
 ```
+
+#### GET /api/v1/sources
+
+List recently indexed sources (users from providers):
+
+```bash
+curl http://localhost:8080/api/v1/sources
+```
+
+#### GET /api/v1/sources/{provider}/{username}
+
+Get a specific source with all their keys:
+
+```bash
+curl http://localhost:8080/api/v1/sources/github/torvalds
+```
+
+#### GET /api/v1/ssh/search
+
+Search SSH public keys (see [Search Query Syntax](#search-query-syntax) below).
+
+#### GET /api/v1/gpg/search
+
+Search GPG public keys (see [Search Query Syntax](#search-query-syntax) below).
+
+#### GET /api/v1/stats
+
+Get platform statistics (total users, keys, providers indexed).
 
 ### Authenticated Endpoints
+
+#### GET /api/v1/me
+
+Get your user profile information and metadata.
 
 #### GET /api/v1/me/keys
 
@@ -130,6 +188,48 @@ Retrieve your claimed username.
 #### PUT /api/v1/me/username
 
 Claim or change your username (must be unique and not reserved).
+
+#### GET /api/v1/me/username/available
+
+Check if a username is available for claiming:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  "http://localhost:8080/api/v1/me/username/available?username=myusername"
+```
+
+#### DELETE /api/v1/me/profile
+
+Release your claimed profile and disconnect all providers.
+
+#### GET /api/v1/me/tasks
+
+List background tasks (key refresh, revocations) with status and progress.
+
+#### GET /api/v1/me/tasks/{id}
+
+Get detailed status for a specific task.
+
+#### GET /api/v1/me/apikeys
+
+List your API keys (shows key IDs, names, and creation dates but not the secret values).
+
+#### POST /api/v1/me/apikeys
+
+Create a new API key:
+
+```bash
+curl -X POST -H "Authorization: Bearer $CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"My CLI Key"}' \
+  http://localhost:8080/api/v1/me/apikeys
+```
+
+Returns the secret key value (format `ak_*`) which is shown only once at creation.
+
+#### DELETE /api/v1/me/apikeys/{id}
+
+Delete an API key to revoke access.
 
 ### Search Query Syntax
 
