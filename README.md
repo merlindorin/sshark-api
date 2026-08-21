@@ -131,6 +131,42 @@ Retrieve your claimed username.
 
 Claim or change your username (must be unique and not reserved).
 
+#### GET /api/v1/me/apikeys
+
+List all API keys for programmatic access.
+
+#### POST /api/v1/me/apikeys
+
+Create a new API key for programmatic access. The secret is only returned once upon creation.
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  -X POST http://localhost:8080/api/v1/me/apikeys \
+  -H "Content-Type: application/json" \
+  -d '{"name": "MY_SERVICE_API_KEY", "description": "API key for CI/CD"}'
+```
+
+Response includes the secret (only shown once):
+```json
+{
+  "id": "ak_3beecc9c60adb5f9b850e91a8ee1e992",
+  "secret": "sk_test_ABC123XYZ456...",
+  "name": "MY_SERVICE_API_KEY",
+  "description": "API key for CI/CD",
+  "created_at": 1716883200
+}
+```
+
+Use the API key as a bearer token in subsequent requests:
+```bash
+curl -H "Authorization: Bearer sk_test_ABC123XYZ456..." \
+  http://localhost:8080/api/v1/me/keys
+```
+
+#### DELETE /api/v1/me/apikeys/{id}
+
+Delete an API key by its ID.
+
 ### Search Query Syntax
 
 The API supports two search modes: **basic** and **advanced**.
