@@ -57,27 +57,45 @@ POSTGRES_HOST=db.example.com POSTGRES_USER=myuser POSTGRES_PASSWORD=secret go ru
 
 Configuration can be set via CLI flags or environment variables.
 
-| Flag               | Environment          | Default     | Description               |
-|--------------------|----------------------|-------------|---------------------------|
-| `--host`           | `HOST`               | `0.0.0.0`   | Host to bind the server   |
-| `--port`           | `PORT`               | `8080`      | Port to bind the server   |
-| `--timeout`        | -                    | `5s`        | HTTP request timeout      |
-| -                  | `POSTGRES_HOST`      | `localhost` | PostgreSQL host           |
-| -                  | `POSTGRES_PORT`      | `5432`      | PostgreSQL port           |
-| -                  | `POSTGRES_USER`      | `postgres`  | PostgreSQL user           |
-| -                  | `POSTGRES_PASSWORD`  | -           | PostgreSQL password       |
-| -                  | `POSTGRES_DATABASE`  | `sshark`    | PostgreSQL database       |
-| -                  | `POSTGRES_SSL_MODE`  | `disable`   | PostgreSQL SSL mode       |
-| -                  | `CLERK_SECRET_KEY`   | -           | Clerk authentication key  |
+| Flag               | Environment                  | Default     | Description                        |
+|--------------------|------------------------------|-------------|------------------------------------|
+| `--host`           | `HTTP_HOST`                  | `0.0.0.0`   | Host to bind the server            |
+| `--port`           | `HTTP_PORT`                  | `8080`      | Port to bind the server            |
+| -                  | `HTTP_READ_TIMEOUT`          | `30s`       | HTTP read timeout                  |
+| -                  | `HTTP_READHEADER_TIMEOUT`    | `5s`        | HTTP read header timeout           |
+| -                  | `HTTP_WRITE_TIMEOUT`         | `30s`       | HTTP write timeout                 |
+| -                  | `HTTP_IDLE_TIMEOUT`          | `120s`      | HTTP idle timeout                  |
+| -                  | `HTTP_MAX_HEADER_BYTES`      | `1048576`   | Maximum header size in bytes       |
+| -                  | `HTTP_GRACEFUL_PERIOD`       | `5s`        | Graceful shutdown period           |
+| -                  | `POSTGRES_HOST`              | `localhost` | PostgreSQL host                    |
+| -                  | `POSTGRES_PORT`              | `5432`      | PostgreSQL port                    |
+| -                  | `POSTGRES_USER`              | `postgres`  | PostgreSQL user                    |
+| -                  | `POSTGRES_PASSWORD`          | -           | PostgreSQL password                |
+| -                  | `POSTGRES_DATABASE`          | `sshark`    | PostgreSQL database                |
+| -                  | `POSTGRES_SSL_MODE`          | `disable`   | PostgreSQL SSL mode                |
+| -                  | `POSTGRES_MAX_CONNS`         | `10`        | Maximum PostgreSQL connections     |
+| -                  | `POSTGRES_MIN_CONNS`         | `2`         | Minimum PostgreSQL connections     |
+| -                  | `POSTGRES_MAX_CONN_LIFETIME` | `1h`        | Maximum connection lifetime        |
+| -                  | `POSTGRES_MAX_CONN_IDLE_TIME`| `30m`       | Maximum connection idle time       |
+| -                  | `CLERK_TOKEN`                | -           | Clerk authentication token         |
+| -                  | `GITHUB_TOKEN`               | -           | GitHub API token (for key refresh) |
+| -                  | `GITLAB_TOKEN`               | -           | GitLab API token (for key refresh) |
+| -                  | `METRIC_PATH`                | `/metrics`  | Prometheus metrics endpoint path   |
+| -                  | `OTEL_EXPORTER_OTLP_ENDPOINT`| -           | OpenTelemetry collector endpoint   |
 
 ## API
 
 ### Authentication
 
-Protected endpoints require a bearer token from Clerk:
+Protected endpoints require a bearer token from Clerk or an API key:
 
 ```bash
+# Using Clerk session token
 curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/keys
+
+# Using API key
+curl -H "Authorization: Bearer ak_your_key_here" \
   http://localhost:8080/api/v1/me/keys
 ```
 
@@ -130,6 +148,81 @@ Retrieve your claimed username.
 #### PUT /api/v1/me/username
 
 Claim or change your username (must be unique and not reserved).
+
+#### GET /api/v1/me
+
+Retrieve authenticated user information.
+
+#### GET /api/v1/me/username/available
+
+Check if a username is available for claiming.
+
+#### DELETE /api/v1/me/profile
+
+Delete your SShark profile and all associated data.
+
+#### GET /api/v1/me/tasks
+
+List background tasks (key refresh, revocation) for your account.
+
+#### GET /api/v1/me/tasks/{id}
+
+Get the status of a specific background task.
+
+#### GET /api/v1/me/apikeys
+
+List your API keys for programmatic access.
+
+#### POST /api/v1/me/apikeys
+
+Create a new API key. Returns the key secret (shown only once).
+
+```bash
+curl -X POST -H "Authorization: Bearer $CLERK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"CI/CD Key","description":"Key for GitHub Actions","expiration":1735689600}' \
+  http://localhost:8080/api/v1/me/apikeys
+```
+
+#### DELETE /api/v1/me/apikeys/{id}
+
+Revoke an API key immediately.
+
+### Public Search Endpoints
+
+#### GET /api/v1/ssh/search
+
+Search SSH public keys using basic or advanced query syntax.
+
+#### GET /api/v1/gpg/search
+
+Search GPG public keys using basic or advanced query syntax.
+
+#### GET /api/v1/publickeys/{id}
+
+Retrieve a specific public key by UUID.
+
+#### GET /api/v1/sources
+
+List recently indexed sources with pagination.
+
+#### GET /api/v1/sources/{provider}/{username}
+
+Get a source with all associated SSH and GPG keys.
+
+#### GET /api/v1/stats
+
+Get search statistics and facets for analytics.
+
+### Health Endpoints
+
+#### GET /liveness
+
+Kubernetes liveness probe endpoint.
+
+#### GET /readiness
+
+Kubernetes readiness probe endpoint.
 
 ### Search Query Syntax
 
