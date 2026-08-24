@@ -111,6 +111,10 @@ curl http://localhost:8080/users/merlindorin.gpg | gpg --import
 
 ### Authenticated Endpoints
 
+#### GET /api/v1/me
+
+Retrieve information about the authenticated user, including email, name, claimed username, and profile URL.
+
 #### GET /api/v1/me/keys
 
 List your published keys across all connected providers.
@@ -130,6 +134,29 @@ Retrieve your claimed username.
 #### PUT /api/v1/me/username
 
 Claim or change your username (must be unique and not reserved).
+
+#### GET /api/v1/me/username/available
+
+Check if a username is available to claim:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  "http://localhost:8080/api/v1/me/username/available?username=desired_username"
+```
+
+Returns whether the username can be claimed and a reason if not available.
+
+#### DELETE /api/v1/me/profile
+
+Release your SShark profile and free the username. Call this before deleting your account to ensure the username is released.
+
+#### GET /api/v1/me/tasks
+
+List recent background tasks (refresh, revoke operations) newest first.
+
+#### GET /api/v1/me/tasks/{id}
+
+Get the status of a specific background task. Use this to poll task progress after triggering a refresh or revocation.
 
 #### GET /api/v1/me/apikeys
 
@@ -166,6 +193,61 @@ curl -H "Authorization: Bearer sk_test_ABC123XYZ456..." \
 #### DELETE /api/v1/me/apikeys/{id}
 
 Delete an API key to immediately invalidate it.
+
+### Additional Public Endpoints
+
+#### GET /api/v1/ssh/search
+
+Search SSH public keys using basic or advanced query syntax. See [Search Query Syntax](#search-query-syntax) below for details.
+
+```bash
+# Basic search
+curl "http://localhost:8080/api/v1/ssh/search?query=torvalds"
+
+# Advanced search
+curl "http://localhost:8080/api/v1/ssh/search?q=@source.username:{torvalds}"
+```
+
+Query parameters:
+- `q` — Advanced query syntax
+- `query` — Basic search term
+- `fields` — Fields to search (default: source.username, source.provider)
+- `limit` — Max results (default: 10, max: 1000)
+- `offset` — Pagination offset
+
+#### GET /api/v1/gpg/search
+
+Search GPG public keys with the same query syntax as SSH search.
+
+#### GET /api/v1/sources
+
+List recently indexed sources (provider accounts), newest first. Used by the home page to surface latest users.
+
+```bash
+curl "http://localhost:8080/api/v1/sources?limit=12"
+```
+
+#### GET /api/v1/sources/{provider}/{username}
+
+Retrieve a single source with all its SSH and GPG keys:
+
+```bash
+curl http://localhost:8080/api/v1/sources/github/torvalds
+```
+
+Responses include cache headers for efficient CDN caching.
+
+#### GET /api/v1/publickeys/{id}
+
+Get a specific public key by UUID:
+
+```bash
+curl http://localhost:8080/api/v1/publickeys/550e8400-e29b-41d4-a716-446655440000
+```
+
+#### GET /api/v1/stats
+
+Get aggregated statistics about indexed SSH and GPG keys.
 
 ### Search Query Syntax
 
