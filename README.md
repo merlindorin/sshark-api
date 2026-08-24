@@ -131,6 +131,34 @@ Retrieve your claimed username.
 
 Claim or change your username (must be unique and not reserved).
 
+#### GET /api/v1/me/username/available
+
+Check whether a username is available to claim:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  "http://localhost:8080/api/v1/me/username/available?username=merlindorin"
+```
+
+Your own current username reports as available, so re-submitting it is not an error.
+
+#### DELETE /api/v1/me/profile
+
+Release your SShark profile and free the username. Call this before deleting your account to ensure the username becomes available again.
+
+#### GET /api/v1/me/tasks
+
+List your recent long-running operations (key refresh, revocation, etc.) in reverse chronological order.
+
+#### GET /api/v1/me/tasks/{id}
+
+Poll a specific task to follow its progress while it's pending or running:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/tasks/01234567-89ab-cdef-0123-456789abcdef
+```
+
 #### GET /api/v1/me/apikeys
 
 List all API keys for programmatic access.
