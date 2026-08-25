@@ -16,6 +16,9 @@
   * [Running the Server](#running-the-server)
   * [Configuration](#configuration)
 * [API](#api)
+  * [Public Endpoints](#public-endpoints)
+  * [Authenticated Endpoints](#authenticated-endpoints)
+  * [Public API Endpoints](#public-api-endpoints)
   * [Search Query Syntax](#search-query-syntax)
 * [Development](#development)
   * [Running Tests](#running-tests)
@@ -111,6 +114,10 @@ curl http://localhost:8080/users/merlindorin.gpg | gpg --import
 
 ### Authenticated Endpoints
 
+#### GET /api/v1/me
+
+Retrieve information about the authenticated user, including email, name, username, and profile URL.
+
 #### GET /api/v1/me/keys
 
 List your published keys across all connected providers.
@@ -130,6 +137,34 @@ Retrieve your claimed username.
 #### PUT /api/v1/me/username
 
 Claim or change your username (must be unique and not reserved).
+
+#### GET /api/v1/me/username/available
+
+Check whether a username is available to claim. Pass the username as a query parameter:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  "http://localhost:8080/api/v1/me/username/available?username=johndoe"
+```
+
+Returns availability status and reason if unavailable.
+
+#### DELETE /api/v1/me/profile
+
+Release your SShark profile and free the username. Call this before deleting your account to prevent the username from being held by an unreachable profile.
+
+#### GET /api/v1/me/tasks
+
+List your recent long-running operations (key refresh, revocation) ordered by newest first.
+
+#### GET /api/v1/me/tasks/{id}
+
+Get the status of a specific task. Poll this endpoint while a task is pending or running to track progress:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/tasks/550e8400-e29b-41d4-a716-446655440000
+```
 
 #### GET /api/v1/me/apikeys
 
@@ -166,6 +201,44 @@ curl -H "Authorization: Bearer sk_test_ABC123XYZ456..." \
 #### DELETE /api/v1/me/apikeys/{id}
 
 Delete an API key to immediately invalidate it.
+
+### Public API Endpoints
+
+#### GET /api/v1/publickeys/{id}
+
+Retrieve a specific public key (SSH or GPG) by its UUID:
+
+```bash
+curl http://localhost:8080/api/v1/publickeys/550e8400-e29b-41d4-a716-446655440000
+```
+
+#### GET /api/v1/sources
+
+List recently indexed sources (provider + username combinations) ordered by most recent first:
+
+```bash
+curl "http://localhost:8080/api/v1/sources?limit=20"
+```
+
+Used by the home page to display the latest indexed users.
+
+#### GET /api/v1/sources/{provider}/{username}
+
+Retrieve a single source with all its SSH and GPG keys:
+
+```bash
+curl http://localhost:8080/api/v1/sources/github/torvalds
+```
+
+Responses are cached for efficient browsing.
+
+#### GET /api/v1/stats
+
+Get aggregated statistics about indexed SSH keys, including facets for providers and algorithms:
+
+```bash
+curl http://localhost:8080/api/v1/stats
+```
 
 ### Search Query Syntax
 
