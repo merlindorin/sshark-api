@@ -72,6 +72,24 @@ Configuration can be set via CLI flags or environment variables.
 
 ## API
 
+### Health Check Endpoints
+
+#### GET /liveness
+
+Kubernetes liveness probe endpoint:
+
+```bash
+curl http://localhost:8080/liveness
+```
+
+#### GET /readiness
+
+Kubernetes readiness probe endpoint:
+
+```bash
+curl http://localhost:8080/readiness
+```
+
 ### Authentication
 
 Protected endpoints require a bearer token from Clerk:
@@ -83,33 +101,55 @@ curl -H "Authorization: Bearer $CLERK_TOKEN" \
 
 ### Public Endpoints
 
-#### GET /users/{username}
+#### GET /api/v1/users/{username}
 
 Retrieve a public user profile:
 
 ```bash
-curl http://localhost:8080/users/merlindorin
+curl http://localhost:8080/api/v1/users/merlindorin
 ```
 
 Returns connected accounts and published keys.
 
-#### GET /users/{username}.keys
+#### GET /api/v1/publickeys/{id}
 
-Download SSH public keys in `authorized_keys` format:
-
-```bash
-curl http://localhost:8080/users/merlindorin.keys >> ~/.ssh/authorized_keys
-```
-
-#### GET /users/{username}.gpg
-
-Download GPG public keys in ASCII armor format:
+Get a specific public key (SSH or GPG) by its UUID:
 
 ```bash
-curl http://localhost:8080/users/merlindorin.gpg | gpg --import
+curl http://localhost:8080/api/v1/publickeys/01234567-89ab-cdef-0123-456789abcdef
 ```
+
+#### GET /api/v1/stats
+
+Get aggregated statistics about indexed SSH keys:
+
+```bash
+curl http://localhost:8080/api/v1/stats
+```
+
+#### GET /api/v1/sources
+
+List recently indexed sources:
+
+```bash
+curl http://localhost:8080/api/v1/sources?limit=10
+```
+
+#### GET /api/v1/sources/{provider}/{username}
+
+Get a source with all SSH and GPG keys:
+
+```bash
+curl http://localhost:8080/api/v1/sources/github/merlindorin
+```
+
+Supported providers: `github`, `gitlab`.
 
 ### Authenticated Endpoints
+
+#### GET /api/v1/me
+
+Get authenticated user information including profile and connected accounts.
 
 #### GET /api/v1/me/keys
 
@@ -127,9 +167,22 @@ Revoke a key by deleting it at the provider, then removing it from SShark.
 
 Retrieve your claimed username.
 
+#### GET /api/v1/me/username/available
+
+Check if a username is available:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  "http://localhost:8080/api/v1/me/username/available?username=merlindorin"
+```
+
 #### PUT /api/v1/me/username
 
 Claim or change your username (must be unique and not reserved).
+
+#### DELETE /api/v1/me/profile
+
+Release your SShark profile and free the username for others to claim.
 
 #### GET /api/v1/me/apikeys
 
@@ -166,6 +219,50 @@ curl -H "Authorization: Bearer sk_test_ABC123XYZ456..." \
 #### DELETE /api/v1/me/apikeys/{id}
 
 Delete an API key to immediately invalidate it.
+
+#### GET /api/v1/me/tasks
+
+List your recent background tasks (key refresh, revocation):
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/tasks
+```
+
+#### GET /api/v1/me/tasks/{id}
+
+Get the status of a specific task:
+
+```bash
+curl -H "Authorization: Bearer $CLERK_TOKEN" \
+  http://localhost:8080/api/v1/me/tasks/01234567-89ab-cdef-0123-456789abcdef
+```
+
+### Search Endpoints
+
+#### GET /api/v1/ssh/search
+
+Search SSH keys using query syntax. Supports both basic and advanced query modes (see Search Query Syntax below).
+
+```bash
+# Basic search
+curl "http://localhost:8080/api/v1/ssh/search?query=torvalds"
+
+# Advanced search
+curl "http://localhost:8080/api/v1/ssh/search?q=@source.username:{torvalds}"
+```
+
+#### GET /api/v1/gpg/search
+
+Search GPG keys using query syntax. Supports both basic and advanced query modes (see Search Query Syntax below).
+
+```bash
+# Basic search
+curl "http://localhost:8080/api/v1/gpg/search?query=torvalds"
+
+# Advanced search
+curl "http://localhost:8080/api/v1/gpg/search?q=@user_ids:{*@example.com*}"
+```
 
 ### Search Query Syntax
 
