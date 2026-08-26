@@ -57,18 +57,47 @@ POSTGRES_HOST=db.example.com POSTGRES_USER=myuser POSTGRES_PASSWORD=secret go ru
 
 Configuration can be set via CLI flags or environment variables.
 
-| Flag               | Environment          | Default     | Description               |
-|--------------------|----------------------|-------------|---------------------------|
-| `--host`           | `HOST`               | `0.0.0.0`   | Host to bind the server   |
-| `--port`           | `PORT`               | `8080`      | Port to bind the server   |
-| `--timeout`        | -                    | `5s`        | HTTP request timeout      |
-| -                  | `POSTGRES_HOST`      | `localhost` | PostgreSQL host           |
-| -                  | `POSTGRES_PORT`      | `5432`      | PostgreSQL port           |
-| -                  | `POSTGRES_USER`      | `postgres`  | PostgreSQL user           |
-| -                  | `POSTGRES_PASSWORD`  | -           | PostgreSQL password       |
-| -                  | `POSTGRES_DATABASE`  | `sshark`    | PostgreSQL database       |
-| -                  | `POSTGRES_SSL_MODE`  | `disable`   | PostgreSQL SSL mode       |
-| -                  | `CLERK_SECRET_KEY`   | -           | Clerk authentication key  |
+#### Server Settings
+
+| Flag               | Environment               | Default     | Description                           |
+|--------------------|---------------------------|-------------|---------------------------------------|
+| `--host`           | `HTTP_HOST`               | `0.0.0.0`   | Host to bind the server               |
+| `--port`           | `HTTP_PORT`               | `8080`      | Port to bind the server               |
+| -                  | `HTTP_READ_TIMEOUT`       | `30s`       | Max duration for reading request      |
+| -                  | `HTTP_READHEADER_TIMEOUT` | `5s`        | Max duration for reading headers      |
+| -                  | `HTTP_WRITE_TIMEOUT`      | `30s`       | Max duration for writing response     |
+| -                  | `HTTP_IDLE_TIMEOUT`       | `120s`      | Max wait for next request (keep-alive)|
+| -                  | `HTTP_MAX_HEADER_BYTES`   | `1048576`   | Max bytes to read parsing headers     |
+| -                  | `HTTP_GRACEFUL_PERIOD`    | `5s`        | Period to wait for graceful shutdown  |
+
+#### Database Settings
+
+| Environment                   | Default     | Description                    |
+|-------------------------------|-------------|--------------------------------|
+| `POSTGRES_HOST`               | `localhost` | PostgreSQL host                |
+| `POSTGRES_PORT`               | `5432`      | PostgreSQL port                |
+| `POSTGRES_USER`               | `postgres`  | PostgreSQL user                |
+| `POSTGRES_PASSWORD`           | -           | PostgreSQL password            |
+| `POSTGRES_DATABASE`           | `sshark`    | PostgreSQL database            |
+| `POSTGRES_SSL_MODE`           | `disable`   | PostgreSQL SSL mode            |
+| `POSTGRES_MAX_CONNS`          | `10`        | Max number of connections      |
+| `POSTGRES_MIN_CONNS`          | `2`         | Min number of connections      |
+| `POSTGRES_MAX_CONN_LIFETIME`  | `1h`        | Max lifetime of a connection   |
+| `POSTGRES_MAX_CONN_IDLE_TIME` | `30m`       | Max idle time of a connection  |
+
+#### Authentication & External Services
+
+| Environment      | Default   | Description                                        |
+|------------------|-----------|----------------------------------------------------|
+| `CLERK_TOKEN`    | -         | Clerk authentication token for API requests        |
+| `GITHUB_TOKEN`   | -         | GitHub API token for refreshing user keys on demand|
+| `GITLAB_TOKEN`   | -         | GitLab API token for refreshing user keys on demand|
+
+#### Observability
+
+| Environment    | Default    | Description                      |
+|----------------|------------|----------------------------------|
+| `METRIC_PATH`  | `/metrics` | Path for Prometheus metrics      |
 
 ## API
 
