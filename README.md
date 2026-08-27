@@ -163,10 +163,6 @@ Trigger an on-demand refresh of your keys from connected providers. Returns a ta
 
 Revoke a key by deleting it at the provider, then removing it from SShark.
 
-#### GET /api/v1/me/username
-
-Retrieve your claimed username.
-
 #### GET /api/v1/me/username/available
 
 Check if a username is available:
